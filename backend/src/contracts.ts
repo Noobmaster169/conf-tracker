@@ -217,7 +217,7 @@ export const ExtractConfig = z.object({
   extract_max_s: z.number().positive().default(120),
   dedupe_n: z.number().int().nonnegative().default(20),
   extract_model: z.string().min(1).default("sonnet"),
-  extract_prompt: z.string().regex(/^v\d+$/).default("v2"),
+  extract_prompt: z.string().regex(/^v\d+$/).default("v3"),
 });
 export type ExtractConfig = z.infer<typeof ExtractConfig>;
 

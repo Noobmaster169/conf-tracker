@@ -7,11 +7,11 @@ import { expect, test } from "vitest";
 import { latestVersion, listVersions, loadPrompt } from "../src/agents/prompts/registry";
 
 test("the shipped extract prompt loads with its frontmatter and schema slot", () => {
-  const prompt = loadPrompt("extract", "v1");
-  expect(prompt).toMatchObject({ step: "extract", version: "v1", model: "sonnet" });
+  const prompt = loadPrompt("extract", "v3");
+  expect(prompt).toMatchObject({ step: "extract", version: "v3", model: "sonnet" });
   expect(prompt.text).toContain("{{schema}}");
   expect(prompt.text).toContain('the section headed "new lines"');
-  expect(listVersions("extract")).toContain("v1");
+  expect(listVersions("extract")).toContain("v3");
   expect(latestVersion("extract")).toMatch(/^v\d+$/);
 });
 
@@ -31,10 +31,13 @@ test("versions sort numerically, and a bad file or version is a terminal error n
   expect(() => listVersions("missing", dir)).toThrow(/no prompts for step "missing"/);
 });
 
-test("extract v2 is the latest extract prompt and documents the named prefix", () => {
-  expect(latestVersion("extract")).toBe("v2");
-  const prompt = loadPrompt("extract", "v2");
-  expect(prompt).toMatchObject({ step: "extract", version: "v2", model: "sonnet" });
-  expect(prompt.text).toContain("[mm:ss S3 Jane Doe]");
+test("extract v3 is the only extract prompt and is about conference talks", () => {
+  expect(listVersions("extract")).toEqual(["v3"]);
+  expect(latestVersion("extract")).toBe("v3");
+  const prompt = loadPrompt("extract", "v3");
+  expect(prompt).toMatchObject({ step: "extract", version: "v3", model: "sonnet" });
   expect(prompt.text).toContain("{{schema}}");
+  expect(prompt.text).toContain("[mm:ss S3 Jane Doe]");
+  expect(prompt.text.toLowerCase()).toContain("conference");
+  expect(() => loadPrompt("extract", "v2")).toThrow();
 });

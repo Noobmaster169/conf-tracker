@@ -15,7 +15,7 @@ import { inRollback } from "./db";
 afterAll(closePool);
 
 const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
-const prompt = loadPrompt("extract", "v1");
+const prompt = loadPrompt("extract", "v3");
 const line = (t0: number, t1: number, text: string, speaker_id: string | null = "S1"): Line => ({ segment_id: 1, t0, t1, speaker_id, text });
 const window: Window = {
   context: [line(0, 4, "Welcome back.", "S8")],
@@ -32,7 +32,7 @@ test("a verified quote gives the claim its speaker and time from the line, and e
     const llm = fakeLlm(answer([fed, { claim: "Oil will reach 90 dollars.", topics: ["oil"], polarity: "bullish", quote: "oil is heading to ninety dollars." }]));
     const result = await runExtraction({ db: tx, llm: llm.client, sessionId: s.id, prompt }, window, []);
 
-    expect(result.call).toMatchObject({ session_id: s.id, step: "extract", prompt_version: "v1", model: "fake/sonnet", window_t0: 0, window_t1: 40, attempt: 1, error: null, claim_count: 2, input_tokens: 100, cost_usd: 0.001 });
+    expect(result.call).toMatchObject({ session_id: s.id, step: "extract", prompt_version: "v3", model: "fake/sonnet", window_t0: 0, window_t1: 40, attempt: 1, error: null, claim_count: 2, input_tokens: 100, cost_usd: 0.001 });
     expect(result.claims.map((c) => [c.speaker_id, c.t0, c.t1, c.status, c.quote_verified])).toEqual([["S11", 30, 36, "ok", true], [null, 36, 40, "ok", true]]);
     expect(llm.requests[0]).toMatchObject({ model: "sonnet", outputSchema: { type: "object" } });
     expect(llm.requests[0]?.system).not.toContain("{{schema}}");

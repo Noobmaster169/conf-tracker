@@ -45,7 +45,7 @@ test("speech speaker events parse, and health without gpu_ms_diar defaults to 0"
 
 test("ExtractConfig fills every default from an empty session config and rejects bad values", () => {
   expect(ExtractConfig.parse({})).toEqual({
-    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v2",
+    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v3",
   });
   expect(ExtractConfig.parse({ speed: 2, extract_model: "haiku" }).extract_model).toBe("haiku");
   expect(ExtractConfig.safeParse({ extract_interval_s: 0 }).success).toBe(false);
