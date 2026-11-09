@@ -3,7 +3,7 @@
  * so it cannot be forged without the password and every cookie dies when the password changes.
  * Web Crypto only: proxy.ts imports this too.
  */
-export const ACCESS_COOKIE = "yt_access";
+export const ACCESS_COOKIE = "ct_access";
 export const ACCESS_MAX_AGE_S = 60 * 60 * 24 * 30;
 
 export async function accessToken(password: string): Promise<string> {

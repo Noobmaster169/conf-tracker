@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { accessToken, hasAccess, safeEqual, safeNext } from "./access";
+import { ACCESS_COOKIE, accessToken, hasAccess, safeEqual, safeNext } from "./access";
 
 test("the token for the right password grants access", async () => {
   expect(await hasAccess(await accessToken("hunter2"), "hunter2")).toBe(true);
@@ -28,4 +28,8 @@ test.each([
   [undefined, "/"],
 ])("safeNext(%s) = %s", (input, expected) => {
   expect(safeNext(input)).toBe(expected);
+});
+
+test("the access cookie has its own name, so yt-stream's dashboard on another localhost port does not overwrite it", () => {
+  expect(ACCESS_COOKIE).toBe("ct_access");
 });

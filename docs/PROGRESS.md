@@ -42,3 +42,19 @@ New:
   expire on a 6 to 9 hour video. Phase 4 downloads the audio first.
 - The frontend build fetches JetBrains Mono from Google Fonts at build time; a flaky network fails
   the build. Self-host it with `next/font/local` if that recurs on the box.
+
+From the phase 0 review (deferred, not fixed):
+
+- `.deployed` moves after `docker compose up -d` succeeds, not after the api is healthy; a commit whose
+  migration crash-loops is marked deployed. Consider `up -d --wait` (the api has a healthcheck).
+- A build that always fails is rebuilt every three minutes with its full output appended to `deploy.log`.
+  Skip a failed sha until the next push, or back off.
+- `run-ngrok.sh` exits silently when `NGROK_DOMAIN` is unset (nohup output goes to /dev/null); the runbook's
+  "start ngrok detached" step gives no command. Log the error to `$LOG` and give the exact command.
+- yt-stream's own auto-deploy restarts the shared speech service on any push touching `speech/`, which ends
+  conf-tracker's live sessions (they go `degraded`, nothing reconnects). Phase 5 must handle or forbid it.
+- conf-tracker's recordings land in `~/yt-stream/data/<uuid>/audio.raw` with no cleanup; 6 to 9 hour stage
+  days grow it fast.
+- yt-stream's `PyannoteDiarizer.diarize` calls one shared pipeline from several session threads without a
+  lock. The two-stream measurement should also check speaker labels stay sane, not only lag.
+- `.gitignore` still lists `speech/` paths.

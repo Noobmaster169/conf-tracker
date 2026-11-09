@@ -28,7 +28,9 @@ if [ -n "$(git status --porcelain)" ]; then
   echo "[$(date -Is)] clone is dirty, refusing to deploy" >> "$LOG"
   exit 1
 fi
-git merge -q --ff-only origin/main
+# The clone is deploy-only and the dirty check guards it, so it follows origin/main even
+# after a force-push (an --ff-only merge would fail there on every run, logging nothing).
+git reset -q --hard origin/main
 echo "[$(date -Is)] deploying $deployed -> $after" >> "$LOG"
 
 # Written to a temporary name and renamed: this script is one of the files, and bash reads a

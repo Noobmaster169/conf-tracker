@@ -56,4 +56,13 @@ run
 check "the next run retries the failed commit and moves the marker" '[ "$(cat "$STACK/.deployed")" = "$(head_of_origin)" ]'
 check "the retry rebuilt the api" 'grep -q "build api" "$DOCKER_LOG"'
 
+# A force-push rewrites main; the deploy-only clone follows it instead of wedging on --ff-only.
+cd "$TMP/work" && git reset -q --hard HEAD~1 && echo forced > backend/x && git commit -qam forced && git push -qf origin main
+: > "$DOCKER_LOG"
+run; rc=$?
+check "a force-push deploys" '[ "$rc" -eq 0 ]'
+check "a force-push moves the marker to the new main" '[ "$(cat "$STACK/.deployed")" = "$(head_of_origin)" ]'
+check "the clone follows the forced main" '[ "$(git -C "$CLONE" rev-parse HEAD)" = "$(head_of_origin)" ]'
+check "a force-push rebuilt the api" 'grep -q "build api" "$DOCKER_LOG"'
+
 [ "$failures" = 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
