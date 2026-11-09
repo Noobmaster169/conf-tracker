@@ -1,19 +1,20 @@
-# The yt-stream stack on the Monash box. auto-deploy.sh copies this file to
-# ~/yt-stream/compose.yaml, next to .env, and runs it from there.
+# The conf-tracker stack on the Monash box. auto-deploy.sh copies this file to
+# ~/conf-tracker/compose.yaml, next to .env, and runs it from there.
 #
 # Postgres and the api are containers on a private network; nothing but the api's
 # loopback port is published, and ngrok publishes that outward. The speech service
-# is not a container: it needs the GPU and the diarize conda env, so it runs on the
-# host (run-speech.sh) bound to the docker bridge address, which is what
-# host.docker.internal resolves to inside the api container. The llm-proxy is a third
+# is not part of this stack: it is yt-stream's, a host process on the GPU bound to the
+# docker bridge address (yt-stream's run-speech.sh), which is what host.docker.internal
+# resolves to inside the api container. Both stacks share it. The llm-proxy is a third
 # container on the same private network.
+name: conf-tracker
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
-      POSTGRES_DB: yt_stream
+      POSTGRES_DB: conf_tracker
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,30 +24,31 @@ services:
       retries: 10
 
   # The llm-proxy, built from the clone. No published port: only the api calls it. The
-  # login is CLAUDE_CODE_OAUTH_TOKEN in ~/yt-stream/.env; without it the stack still
+  # login is CLAUDE_CODE_OAUTH_TOKEN in ~/conf-tracker/.env; without it the stack still
   # comes up and every extraction call is stored as a failed call.
   llm-proxy:
-    build: ../projects/yt-stream/proxy
-    image: yt-stream-llm-proxy:local
+    build: ../projects/conf-tracker/proxy
+    image: conf-tracker-llm-proxy:local
     restart: unless-stopped
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
 
   api:
-    build: ../projects/yt-stream/backend
-    image: yt-stream-api:local
+    build: ../projects/conf-tracker/backend
+    image: conf-tracker-api:local
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8092:8092"
+      - "127.0.0.1:8093:8093"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      PORT: "8092"
+      PORT: "8093"
       PG_HOST: postgres
       PG_PORT: "5432"
-      PG_DATABASE: yt_stream
+      PG_DATABASE: conf_tracker
       PG_USER: postgres
       PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+      # yt-stream's speech service, shared with that stack.
       SPEECH_URL: ws://host.docker.internal:8100/sessions
       LLM_PROXY_URL: http://llm-proxy:4000
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
@@ -59,7 +61,7 @@ services:
     healthcheck:
       # /health is 200 when Postgres answers and 503 when it does not. start_period
       # covers the migrations, which run before the process listens.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8092/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -70,13 +72,13 @@ services:
   # over the private network. Without ACCESS_PASSWORD in .env it still starts, and its password
   # gate refuses everyone, so a missing value never takes the rest of the stack down with it.
   web:
-    build: ../projects/yt-stream/frontend
-    image: yt-stream-web:local
+    build: ../projects/conf-tracker/frontend
+    image: conf-tracker-web:local
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3092:3000"
+      - "127.0.0.1:3093:3000"
     environment:
-      BACKEND_URL: http://api:8092
+      BACKEND_URL: http://api:8093
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
       ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
     depends_on:

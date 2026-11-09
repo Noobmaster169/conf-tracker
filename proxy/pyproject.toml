@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "yt-stream-proxy"
+name = "conf-tracker-proxy"
 version = "0.1.0"
-description = "yt-stream's LLM gateway: the Anthropic Messages API in front of Claude Code"
+description = "conf-tracker's LLM gateway: the Anthropic Messages API in front of Claude Code"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",

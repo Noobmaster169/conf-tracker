@@ -18,7 +18,7 @@ function required(name) {
 export async function migrate({ log = console.log } = {}) {
   const client = new Client({
     host: required("PG_HOST"),
-    port: Number(process.env.PG_PORT ?? "5434"),
+    port: Number(process.env.PG_PORT ?? "5435"),
     database: required("PG_DATABASE"),
     user: required("PG_USER"),
     password: required("PG_PASSWORD"),

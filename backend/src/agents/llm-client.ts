@@ -7,7 +7,7 @@ import { childLogger } from "../lib/logger";
 const log = childLogger({ module: "llm-client" });
 
 // Not a credential: the proxy reads it as the project the call is attributed to.
-const PROJECT = "yt-stream";
+const PROJECT = "conf-tracker";
 // The wire requires a cap; this is generous, not a budget. `claude -p` ignores it.
 const DEFAULT_MAX_TOKENS = 8000;
 const REQUEST_TIMEOUT_MS = 300_000;

@@ -5,9 +5,9 @@ import { defineConfig } from "vitest/config";
 export const TEST_ENV = {
   NODE_ENV: "test",
   PG_HOST: "127.0.0.1",
-  // Another local stack may hold 5434, so a run can point elsewhere.
-  PG_PORT: process.env.TEST_PG_PORT ?? "5434",
-  PG_DATABASE: "yt_stream_test",
+  // Another local stack may hold 5435, so a run can point elsewhere.
+  PG_PORT: process.env.TEST_PG_PORT ?? "5435",
+  PG_DATABASE: "conf_tracker_test",
   PG_USER: "postgres",
   PG_PASSWORD: "localdev",
   SPEECH_URL: "ws://127.0.0.1:1/sessions",

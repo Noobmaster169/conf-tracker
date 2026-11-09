@@ -9,7 +9,7 @@ import { parseFilters, toQuery } from "@/lib/claim-filters";
 import { videoTitles } from "@/lib/video-title";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "claims · yt-stream" };
+export const metadata: Metadata = { title: "claims · conf-tracker" };
 
 export default async function ClaimsPage({ searchParams }: PageProps<"/claims">) {
   const filters = parseFilters(await searchParams);

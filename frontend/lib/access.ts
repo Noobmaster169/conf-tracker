@@ -8,7 +8,7 @@ export const ACCESS_MAX_AGE_S = 60 * 60 * 24 * 30;
 
 export async function accessToken(password: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("yt-stream-access-v1"));
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("conf-tracker-access-v1"));
   return Array.from(new Uint8Array(mac), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

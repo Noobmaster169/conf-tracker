@@ -48,7 +48,7 @@ test("a call sends the Messages shape with the schema and reads text, usage and 
   expect(response.latencyMs).toBeGreaterThanOrEqual(0);
   expect(received[0]).toMatchObject({
     path: "/v1/messages",
-    headers: { "x-api-key": "yt-stream", "content-type": "application/json" },
+    headers: { "x-api-key": "conf-tracker", "content-type": "application/json" },
     body: { model: "sonnet", system: "sys", messages: [{ role: "user", content: "usr" }], max_tokens: 8000, output_config: { format: { type: "json_schema", schema } } },
   });
 });

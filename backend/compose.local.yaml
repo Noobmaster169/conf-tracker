@@ -1,15 +1,16 @@
 # Local infrastructure for `pnpm dev` and the tests: Postgres and the llm-proxy.
 #   docker compose -f compose.local.yaml up -d
-# Postgres on loopback 5434 so it collides with neither retina (5433) nor yt-engine (5432).
+# Postgres on loopback 5435 so it collides with none of yt-engine (5432), retina (5433) and yt-stream (5434).
 # retina's backend/ defaults to the same project name "backend"; without this the two stacks recreate each other's containers.
-name: yt-stream
+name: conf-tracker
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: conf_tracker
     ports:
-      - "127.0.0.1:5434:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,8 +19,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # The llm-proxy (../proxy), the one door to the models. Published on host loopback 4002
-  # for `pnpm dev`, which sets LLM_PROXY_URL=http://127.0.0.1:4002. The login is
+  # The llm-proxy (../proxy), the one door to the models. Published on host loopback 4003
+  # for `pnpm dev`, which sets LLM_PROXY_URL=http://127.0.0.1:4003. The login is
   # CLAUDE_CODE_OAUTH_TOKEN, which compose reads from backend/.env (make one with
   # `claude setup-token`); without it the proxy starts and refuses every Claude call as
   # "not logged in". Rebuild after changing proxy/:
@@ -27,7 +28,7 @@ services:
   llm-proxy:
     build: ../proxy
     ports:
-      - "127.0.0.1:4002:4000"
+      - "127.0.0.1:4003:4000"
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
 

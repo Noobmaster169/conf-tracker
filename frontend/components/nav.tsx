@@ -9,7 +9,7 @@ const LINKS = [
 export function Nav({ current }: { current: "sessions" | "claims" }) {
   return (
     <nav aria-label="Main" className="flex items-baseline gap-5 border-b border-line bg-panel px-4 py-2">
-      <span className="text-accent">yt-stream</span>
+      <span className="text-accent">conf-tracker</span>
       {LINKS.map((link) => (
         <Link
           key={link.key}

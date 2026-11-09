@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # The backend API image, built on the box from the clone by deploy/auto-deploy.sh:
-#   docker build -t yt-stream-api backend
+#   docker build -t conf-tracker-api backend
 # Runs TypeScript directly through tsx, so there is no build step to drift from the source.
 
 FROM node:24-alpine AS base
@@ -23,8 +23,8 @@ COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
 USER api
-EXPOSE 8092
-ENV PORT=8092
+EXPOSE 8093
+ENV PORT=8093
 # Migrations gate startup: new code never serves against an old schema, and a failed
 # migration keeps the old container running instead of rolling out a broken one.
 CMD ["sh", "-c", "node db/migrate.mjs && node --import tsx src/index.ts"]

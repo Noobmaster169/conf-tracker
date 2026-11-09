@@ -2,7 +2,7 @@
 #
 # The llm-proxy, as a service of the compose stack (backend/compose.local.yaml
 # on a laptop, deploy/compose.yaml on the box). Built from this directory:
-#   docker build -t yt-stream-llm-proxy proxy
+#   docker build -t conf-tracker-llm-proxy proxy
 #
 # It carries the Claude Code CLI, because the `claudecli` provider shells out to
 # `claude -p`. The login is CLAUDE_CODE_OAUTH_TOKEN, passed in by compose from .env

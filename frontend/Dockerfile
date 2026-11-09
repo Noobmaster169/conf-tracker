@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # The dashboard as a container of the box's compose stack, next to the api it reads:
-#   docker build -t yt-stream-web frontend
+#   docker build -t conf-tracker-web frontend
 # Vercel stays the public frontend; this one is reached over an SSH tunnel to the box's loopback.
 # The box's own Node is 18, below what Next 16 needs, hence the image.
 

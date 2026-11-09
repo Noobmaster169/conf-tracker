@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-const KEY = "yt-stream:transcript-delay-s";
+const KEY = "conf-tracker:transcript-delay-s";
 export const MAX_DELAY_S = 60;
 
 // One value per page, read from storage once. An external store, because the server renders 0 and the browser may know better.
