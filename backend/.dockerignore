@@ -1,0 +1,6 @@
+node_modules
+.env
+.env.*
+test
+vitest.config.ts
+compose.local.yaml

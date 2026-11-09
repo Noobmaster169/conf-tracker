@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* One dark ground, one amber accent, three states, and eight speaker colours kept apart from the states. Nothing else declares a colour. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0e13;
+  --panel: #11151c;
+  --panel-raised: #171c25;
+  --line: #222a36;
+  --ink: #e6e9ef;
+  --ink-dim: #8b94a3;
+  --ink-faint: #5a6372;
+  --accent: #f5a524;
+  --live: #22c55e;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --spk-1: #60a5fa;
+  --spk-2: #f472b6;
+  --spk-3: #34d399;
+  --spk-4: #c084fc;
+  --spk-5: #fbbf24;
+  --spk-6: #22d3ee;
+  --spk-7: #fb923c;
+  --spk-8: #a3e635;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-live: var(--live);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-spk-1: var(--spk-1);
+  --color-spk-2: var(--spk-2);
+  --color-spk-3: var(--spk-3);
+  --color-spk-4: var(--spk-4);
+  --color-spk-5: var(--spk-5);
+  --color-spk-6: var(--spk-6);
+  --color-spk-7: var(--spk-7);
+  --color-spk-8: var(--spk-8);
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  height: 100%;
+}
+
+@keyframes relabel {
+  from {
+    background: var(--panel-raised);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* The flash is the only signal a line was relabelled, but it is decoration, so reduced motion drops it. */
+@media (prefers-reduced-motion: no-preference) {
+  .relabel {
+    animation: relabel 1.2s ease-out;
+  }
+}

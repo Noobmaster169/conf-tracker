@@ -1,0 +1,88 @@
+import { Claim, type ClaimStatus, type Polarity, TopicCount } from "../contracts";
+import type { Queryable } from "../db";
+
+export interface Row {
+  id: string;
+  session_id: string;
+  call_id: string;
+  speaker_id: string | null;
+  t0: number | null;
+  t1: number | null;
+  claim: string;
+  topics: string[];
+  polarity: string;
+  quote: string;
+  quote_verified: boolean;
+  status: string;
+  created_at: Date;
+}
+
+const COLUMNS = "id, session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, created_at";
+// bigserial and bigint come back as strings from pg.
+export const toClaim = (row: Row): Claim => Claim.parse({ ...row, id: Number(row.id), call_id: Number(row.call_id), created_at: row.created_at.toISOString() });
+
+export interface NewClaim {
+  speakerId: string | null;
+  t0: number | null;
+  t1: number | null;
+  claim: string;
+  topics: string[];
+  polarity: Polarity;
+  quote: string;
+  quoteVerified: boolean;
+  status: ClaimStatus;
+}
+
+/** Stores the claims of one call in the order the model gave them; ids follow that order. */
+export async function insertMany(db: Queryable, sessionId: string, callId: number, items: NewClaim[]): Promise<Claim[]> {
+  const stored: Claim[] = [];
+  for (const item of items) {
+    const { rows } = await db.query<Row>(
+      `insert into claims (session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11) returning ${COLUMNS}`,
+      [sessionId, callId, item.speakerId, item.t0, item.t1, item.claim, item.topics, item.polarity, item.quote, item.quoteVerified, item.status],
+    );
+    stored.push(toClaim(rows[0]!));
+  }
+  return stored;
+}
+
+/** Claims by stream time. An unverified claim has no time and is always included: hiding it would hide a failure. */
+export async function list(db: Queryable, sessionId: string, range: { from?: number; to?: number; limit?: number }): Promise<Claim[]> {
+  const { rows } = await db.query<Row>(
+    `select ${COLUMNS} from claims
+     where session_id = $1 and (t0 is null or (t0 >= $2 and t0 <= $3))
+     order by id asc limit $4`,
+    [sessionId, range.from ?? 0, range.to ?? Number.MAX_SAFE_INTEGER, range.limit ?? 1000],
+  );
+  return rows.map(toClaim);
+}
+
+/** The last `n` claims, oldest first. */
+export async function latest(db: Queryable, sessionId: string, n: number): Promise<Claim[]> {
+  const { rows } = await db.query<Row>(
+    `select ${COLUMNS} from (select ${COLUMNS} from claims where session_id = $1 order by id desc limit $2) recent order by id asc`,
+    [sessionId, n],
+  );
+  return rows.map(toClaim);
+}
+
+export async function forCall(db: Queryable, callId: number): Promise<Claim[]> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from claims where call_id = $1 order by id asc`, [callId]);
+  return rows.map(toClaim);
+}
+
+/**
+ * How often each topic came up among the claims timed in a range. Duplicates would count one assertion twice, and an
+ * unverified claim has no time, so neither counts; the feed still lists both.
+ */
+export async function topicCounts(db: Queryable, sessionId: string, range: { from: number; to: number; limit?: number }): Promise<TopicCount[]> {
+  const { rows } = await db.query<{ topic: string; count: number }>(
+    `select lower(topic) as topic, count(*)::int as count
+     from claims, unnest(topics) as topic
+     where session_id = $1 and status <> 'duplicate' and t0 >= $2 and t0 <= $3
+     group by lower(topic) order by count desc, topic asc limit $4`,
+    [sessionId, range.from, range.to, range.limit ?? 20],
+  );
+  return rows.map((row) => TopicCount.parse(row));
+}

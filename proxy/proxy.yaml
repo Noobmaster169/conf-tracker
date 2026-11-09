@@ -1,0 +1,100 @@
+# retina-proxy configuration. Committed and used as-is: nothing in here is a secret.
+#
+# Shaped after LiteLLM's `model_list` on purpose: if this proxy ever stops being worth
+# maintaining, migrating to LiteLLM should be close to a rename.
+#
+# `${NAME:-default}` is read from the environment when the file loads. Only what
+# differs between a proxy on a laptop and the one in the compose stack is read that
+# way; the Dockerfile sets both values for the container.
+
+version: 1
+
+server:
+  # Loopback on a laptop. In the compose stack the container binds its own
+  # interface, reachable only on the compose network: nothing publishes its port on
+  # the box, and compose.local.yaml publishes it to host loopback only.
+  host: ${LLM_PROXY_HOST:-127.0.0.1}
+  port: 4000
+  request_timeout_s: 1800
+  cors_origins: []         # keep empty; see the origin guard in main.py
+  i_know_this_is_exposed: ${LLM_PROXY_EXPOSED:-false}
+
+providers:
+  # The Claude Code subscription, driven as `claude -p`. Needs Claude Code installed
+  # and logged in: in the container, CLAUDE_CODE_OAUTH_TOKEN (from `claude
+  # setup-token`) is the login. The cost it reports is counterfactual (what the call
+  # would have cost via the API); no money leaves the account.
+  claudecli:
+    type: claudecli
+    binary: claude
+    max_concurrency: 30     # `claude -p` spawns a full agent session per call. The worker's three lanes added up: classify 10,
+                            # compare 10 and the ontology's own 10. Below that the extra calls queue here, first come first
+                            # served, with their timeout running. Well under the ~64 sockets ngrok survives.
+    timeout_s: 1200
+    stream_mode: native
+    neutralise_anthropic_key: true
+    # The CLI's built-in tools a session may use. None: a completion needs none,
+    # and a crafted email must have nothing to steer.
+    tools: []
+
+  # Template for a tool-using rail, off until needed. Uncomment this and the
+  # `sonnet-web` alias below: that alias gets web search, `sonnet` keeps none.
+  # Any built-in the CLI lists works here (WebSearch, WebFetch, Read...).
+  # claudecli_web:
+  #   type: claudecli
+  #   binary: claude
+  #   max_concurrency: 8
+  #   timeout_s: 1200
+  #   stream_mode: native
+  #   neutralise_anthropic_key: true
+  #   tools: [WebSearch]
+
+  mock:
+    type: mock
+
+model_list:
+  # Subscription rail. The model_id is passed verbatim to `claude --model`, so the
+  # CLI's own short aliases work and track whatever is current for that tier. All
+  # of these match the `claudecli/*` capability glob automatically.
+  # The alias IS the model name; nothing to decode.
+  - model_name: sonnet
+    params: { model: claudecli/sonnet }
+
+  - model_name: opus
+    params: { model: claudecli/opus }
+
+  - model_name: haiku
+    params: { model: claudecli/haiku }
+
+  # With the claudecli_web provider above:
+  # - model_name: sonnet-web
+  #   params: { model: claudecli_web/sonnet }
+
+  # Scripted, free, offline: echoes the prompt back. For smoke tests.
+  - model_name: test
+    params: { model: mock/echo }
+
+# Patches the baseline table in capabilities.py, so a model change is a config edit
+# rather than a release. `sampling: deny` matters more than it looks: current Claude
+# models reject `temperature` with a 400, and many clients send it by default.
+capabilities:
+  # `claude -p` spawns a whole agent session: no tool-use API and no separate system
+  # field; the provider folds `system` into the prompt body. `tools: deny` here is the
+  # Messages API's client-defined tools, which the CLI cannot take. The CLI's own
+  # built-ins are the provider's `tools` list above.
+  #
+  # `images: allow` although the CLI takes no image block: the provider writes each
+  # image to a temporary file and enables the session's own Read tool for that call
+  # alone, so an ordinary Anthropic image block works and nothing else gets a
+  # filesystem. See claude_cli.py.
+  "claudecli/*":
+    sampling: deny
+    tools: deny
+    images: allow
+    system: merge_into_first_user
+  # With the claudecli_web template: capabilities match by provider name.
+  # "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }
+
+# What to do with a parameter the target model cannot take: strip it and say so in
+# the X-LLM-Proxy-Warnings response header. `strip_silent` and `reject` also exist.
+on_unsupported_param: strip_and_warn

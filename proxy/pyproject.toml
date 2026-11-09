@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yt-stream-proxy"
+version = "0.1.0"
+description = "yt-stream's LLM gateway: the Anthropic Messages API in front of Claude Code"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "orjson>=3.10",
+    "anyio>=4.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# The `# noqa: BLE001` markers in providers/ were suppressing a rule that had
+# never run: there was no ruff config and no lint step. BLE is on so they mean
+# something again. Import sorting and pyupgrade are deliberately left off: on
+# inherited code they produce a wide diff of pure churn and catch no defects.
+select = ["E", "F", "W", "B", "BLE"]
