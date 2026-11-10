@@ -9,7 +9,8 @@ import { callStructured, type StructuredDeps } from "./structured";
 
 export const NameOutput = z.object({
   proposals: z.array(
-    z.object({ speaker_id: z.string().min(1), name: z.string().min(1), role: z.string().nullable(), confidence: z.number().min(0).max(1), quote: z.string() }),
+    // `heard` is defaulted so an answer written for name/v2, which did not ask for it, still parses.
+    z.object({ speaker_id: z.string().min(1), heard: z.string().nullable().default(null), name: z.string().min(1), role: z.string().nullable(), confidence: z.number().min(0).max(1), quote: z.string() }),
   ),
 });
 export type NameOutput = z.infer<typeof NameOutput>;
@@ -27,8 +28,12 @@ export interface NameResult {
   named: Speaker[];
 }
 
-/** One naming call over a window. Every proposal is stored with the judge's verdict; only accepted ones touch a speaker. Never throws for a model failure. */
-export async function runNaming(deps: NameDeps, window: NameWindow, roster: Speaker[], scheduled: string[] = []): Promise<NameResult> {
+/**
+ * One naming call over a window. Every proposal is stored with the judge's verdict; only accepted ones touch a speaker.
+ * `scheduled` is the prompt's list of who the schedule expects and `scheduledNames` their names alone, for the judge.
+ * Never throws for a model failure.
+ */
+export async function runNaming(deps: NameDeps, window: NameWindow, roster: Speaker[], scheduled: string[] = [], scheduledNames: string[] = []): Promise<NameResult> {
   const { db, sessionId } = deps;
   const { call, data } = await callStructured(deps, NameOutput, window, renderNameWindow(window, roster, scheduled));
   if (!data) return { call: calls.toSummary(call, 0), proposals: [], named: [] };
@@ -36,7 +41,7 @@ export async function runNaming(deps: NameDeps, window: NameWindow, roster: Spea
   // account for a merge or a stronger name that landed while the model was answering.
   const named = new Map<string, Speaker>();
   const verdicts = [];
-  for (const p of judgeProposals(data.proposals, window, roster, deps.floor)) {
+  for (const p of judgeProposals(data.proposals, window, roster, deps.floor, scheduledNames)) {
     if (p.status !== "accepted") { verdicts.push(p); continue; }
     const speaker = await speakers.setName(db, sessionId, p.speakerId, { name: p.name, role: p.role, confidence: p.confidence, quote: p.quote, callId: call.id });
     if (speaker) named.set(speaker.speaker_id, speaker);

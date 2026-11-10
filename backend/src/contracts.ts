@@ -227,7 +227,7 @@ export const ExtractConfig = z.object({
   extract_max_s: z.number().positive().default(120),
   dedupe_n: z.number().int().nonnegative().default(20),
   extract_model: z.string().min(1).default("sonnet"),
-  extract_prompt: z.string().regex(/^v\d+$/).default("v4"),
+  extract_prompt: z.string().regex(/^v\d+$/).default("v5"),
 });
 export type ExtractConfig = z.infer<typeof ExtractConfig>;
 
@@ -239,7 +239,7 @@ export const NameConfig = z.object({
   name_floor: z.number().min(0).max(1).default(0.7),
   // Measured on the claude -p rail: haiku thought for 40 to 105 s a call and named on weaker evidence; sonnet took 5 to 10 s.
   name_model: z.string().min(1).default("sonnet"),
-  name_prompt: z.string().regex(/^v\d+$/).default("v2"),
+  name_prompt: z.string().regex(/^v\d+$/).default("v3"),
 });
 export type NameConfig = z.infer<typeof NameConfig>;
 

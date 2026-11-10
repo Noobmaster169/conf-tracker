@@ -94,6 +94,8 @@ export function renderNameWindow(window: NameWindow, speakers: Speaker[], schedu
 export interface Proposal {
   speaker_id: string;
   name: string;
+  /** The name as the quote says it, when the model was asked for it (name/v3 on): "Jackie" for Jacqueline Reses. */
+  heard?: string | null;
   role: string | null;
   confidence: number;
   quote: string;
@@ -119,11 +121,23 @@ function mentionsName(quote: string, name: string): boolean {
   return words(name).some((w) => said.some((q) => sameWord(w, q)));
 }
 
+const sameName = (a: string, b: string): boolean => words(a).join(" ") === words(b).join(" ");
+
+/**
+ * The quote says who this is: it holds a word of the name itself, or it holds the short form the model heard ("Jackie",
+ * "Rish") and the name is one the schedule expects. A nickname alone may only point at a scheduled speaker, never mint a new name.
+ */
+function quoteNames(p: Proposal, scheduled: string[]): boolean {
+  if (mentionsName(p.quote, p.name)) return true;
+  return !!p.heard && mentionsName(p.quote, p.heard) && scheduled.some((name) => sameName(name, p.name));
+}
+
 /**
  * The evidence check for names. The quote may sit on anyone's line, since a host introduces a guest, but it must be in the
- * window word for word, the named speaker must speak there, the model must be sure enough, the quote must say the name, and a name already held must be weaker.
+ * window word for word, the named speaker must speak there, the model must be sure enough, the quote must say the name
+ * (or a short form of a scheduled speaker's, whose full names are `scheduled`), and a name already held must be weaker.
  */
-export function judgeProposals(proposals: Proposal[], window: NameWindow, speakers: Speaker[], floor: number): Judged[] {
+export function judgeProposals(proposals: Proposal[], window: NameWindow, speakers: Speaker[], floor: number, scheduled: string[] = []): Judged[] {
   const held = new Map(speakers.map((s) => [s.speaker_id, s.name === null ? null : (s.name_confidence ?? 0)]));
   return proposals.map((p) => {
     const quoteVerified = locateQuote(window.lines, p.quote) !== null;
@@ -132,7 +146,7 @@ export function judgeProposals(proposals: Proposal[], window: NameWindow, speake
     if (!window.present.includes(p.speaker_id)) return reject(`${p.speaker_id} does not speak in the window`);
     if (!quoteVerified) return reject("quote not in the window");
     if (p.confidence < floor) return reject(`confidence ${p.confidence.toFixed(2)} is below the floor ${floor.toFixed(2)}`);
-    if (!mentionsName(p.quote, p.name)) return reject("quote does not contain the name");
+    if (!quoteNames(p, scheduled)) return reject("quote does not contain the name");
     const current = held.get(p.speaker_id) ?? null;
     if (current !== null && current >= p.confidence) return reject(`${p.speaker_id} already has a name at ${current.toFixed(2)}`);
     held.set(p.speaker_id, p.confidence);

@@ -45,7 +45,7 @@ test("speech speaker events parse, and health without gpu_ms_diar defaults to 0"
 
 test("ExtractConfig fills every default from an empty session config and rejects bad values", () => {
   expect(ExtractConfig.parse({})).toEqual({
-    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v4",
+    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v5",
   });
   expect(ExtractConfig.parse({ speed: 2, extract_model: "haiku" }).extract_model).toBe("haiku");
   expect(ExtractConfig.safeParse({ extract_interval_s: 0 }).success).toBe(false);
@@ -71,7 +71,7 @@ test("claim and call events parse and the snapshot carries both lists", () => {
 });
 
 test("NameConfig fills every default from an empty session config and rejects bad values", () => {
-  expect(NameConfig.parse({})).toEqual({ name: true, name_interval_s: 60, name_window_s: 180, name_floor: 0.7, name_model: "sonnet", name_prompt: "v2" });
+  expect(NameConfig.parse({})).toEqual({ name: true, name_interval_s: 60, name_window_s: 180, name_floor: 0.7, name_model: "sonnet", name_prompt: "v3" });
   expect(NameConfig.safeParse({ name_floor: 1.5 }).success).toBe(false);
   expect(NameConfig.safeParse({ name_interval_s: 1 }).success).toBe(false);
   expect(NameConfig.safeParse({ name_prompt: "latest" }).success).toBe(false);

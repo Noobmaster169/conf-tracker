@@ -98,3 +98,19 @@ test("judgeProposals rejects a quote that never mentions the name, matching whol
   expect(judge("K", "I also agree, K.")).toEqual(["rejected", "quote does not contain the name"]);
   expect(judge("Al", "I also agree, K.")).toEqual(["rejected", "quote does not contain the name"]);
 });
+
+test("judgeProposals takes a short form the quote says for a scheduled speaker's full name, and for nobody else's", () => {
+  const roster = [speaker("S1"), speaker("S2")];
+  const window = selectNameWindow([line(0, "S1", "Hi, Jackie, so great to have you here."), line(4, "S2", "my name is rish and i head up ai growth")], roster, cfg)!;
+  const scheduled = ["Jacqueline Reses", "Rishin Sharma"];
+  const judge = (p: { speaker_id: string; name: string; heard?: string | null; quote: string }, names = scheduled) =>
+    judgeProposals([{ role: null, confidence: 0.9, ...p }], window, roster, 0.7, names).map((j) => j.status)[0];
+  const jackie = { speaker_id: "S2", name: "Jacqueline Reses", heard: "Jackie", quote: "Hi, Jackie, so great to have you here." };
+  expect(judge(jackie)).toBe("accepted");
+  expect(judge({ speaker_id: "S2", name: "rishin sharma", heard: "rish", quote: "my name is rish and i head up ai growth" })).toBe("accepted");
+  // Without the short form, with one the quote does not hold, or for a name the schedule does not expect, the old rule stands.
+  expect(judge({ ...jackie, heard: null })).toBe("rejected");
+  expect(judge({ ...jackie, heard: "Jacqui" })).toBe("rejected");
+  expect(judge(jackie, ["Rishin Sharma"])).toBe("rejected");
+  expect(judge(jackie, [])).toBe("rejected");
+});

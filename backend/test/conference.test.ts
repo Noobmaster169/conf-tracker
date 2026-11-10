@@ -112,6 +112,7 @@ test("extraction is told what is on stage, a named voice becomes the scheduled p
     const extraction = fakeLlm(JSON.stringify({ claims: [{ claim: "Solana Labs will ship Firedancer in Q1.", kind: "roadmap", importance: 4, topics: ["firedancer"], polarity: "bullish", quote: "we ship Firedancer in the first quarter" }] }));
     await createExtractor({ db: tx, hub, sessionId: session.id, llm: extraction.client, config: ExtractConfig.parse({}) }).tick();
     expect(extraction.requests[0]?.user).toContain('## on stage\nConference: Breakpoint, Main stage. The Solana conference.\nSession: "Opening keynote" (keynote)\nSpeakers: Anatoly Yakovenko (Co-Founder, Solana Labs)');
+    expect(extraction.requests[0]?.user).toContain("Names on this stage's schedule, spelt correctly: Anatoly Yakovenko, Solana Labs");
     expect(extraction.requests[0]?.user).toContain("[00:05 S1 Anatoly Yakovenko, Solana Labs] I'm Anatoli");
 
     // On a fast catch-up the tracker is ahead: it has already moved the stage on to the panel at 300 s. A run over

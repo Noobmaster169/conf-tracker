@@ -38,7 +38,25 @@ export function onStageText(context: StageContext): string {
   } else {
     lines.push(running?.state === "break" ? "Session: a break, or between sessions" : "Session: not identified yet");
   }
+  const names = scheduleNames(context.schedule);
+  if (names.length > 0) lines.push(`Names on this stage's schedule, spelt correctly: ${names.join(", ")}`);
   return lines.join("\n");
+}
+
+// Enough for a full day on one stage, and short enough to read on every call.
+const MAX_SCHEDULE_NAMES = 160;
+
+/** Every person and organisation the stage's schedule names, once each: the spellings speech recognition gets wrong. */
+export function scheduleNames(schedule: Talk[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of schedule.flatMap((talk) => talk.speakers.flatMap((s) => [s.name, s.org]))) {
+    const key = name?.trim().toLowerCase();
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name.trim());
+  }
+  return out.slice(0, MAX_SCHEDULE_NAMES);
 }
 
 /** Everyone the schedule expects on the stage, the running talk's people first. */

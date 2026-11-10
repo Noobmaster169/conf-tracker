@@ -45,7 +45,7 @@ export function createNamer(deps: NamerDeps): Loop {
       if (!window || window.t1 === answeredT1) return;
       const context = await loadStageContext(db, sessionId, window.t1);
       const scheduled = context ? scheduledPeople(context) : [];
-      const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster, scheduled.map((s) => s.line));
+      const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster, scheduled.map((s) => s.line), scheduled.map((s) => s.person.name));
       hub.publish(sessionId, { type: "call", data: result.call });
       for (const speaker of result.named) {
         // A named voice becomes a person: one the schedule expects when the name fits exactly one of them, otherwise
