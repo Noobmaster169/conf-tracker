@@ -26,7 +26,7 @@ export function VideoCard({ video }: { video: Video }) {
             <LiveBadge />
           </span>
         ) : (
-          video.duration_s > 0 && <span className="absolute bottom-2 right-2 rounded bg-ink/85 px-1.5 py-0.5 text-xs font-medium text-white">{formatDuration(video.duration_s)}</span>
+          video.duration_s > 0 && <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-xs font-medium text-white">{formatDuration(video.duration_s)}</span>
         )}
       </div>
       <div className="p-4">

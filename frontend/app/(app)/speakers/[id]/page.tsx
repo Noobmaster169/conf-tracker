@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Empty, Page } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
-import { LocalTime } from "@/components/ui/local-time";
 import { TalkRow } from "@/components/ui/talk-row";
 import { getPerson } from "@/lib/api-client";
 import { titleAndOrg } from "@/lib/format";
@@ -39,7 +38,7 @@ export default async function SpeakerPage({ params }: PageProps<"/speakers/[id]"
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {talks.map((card) => (
               <li key={card.talk.id}>
-                <TalkRow card={card} />
+                <TalkRow card={card} showStage />
               </li>
             ))}
           </ul>
@@ -56,7 +55,7 @@ export default async function SpeakerPage({ params }: PageProps<"/speakers/[id]"
           <ol className="space-y-3">
             {claims.map((item) => (
               <li key={item.id}>
-                <ClaimCard item={item} hide={{ who: true }} aside={<LocalTime iso={item.created_at} mode="both" />} />
+                <ClaimCard item={item} hide={{ who: true }} />
               </li>
             ))}
           </ol>

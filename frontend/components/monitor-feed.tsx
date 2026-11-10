@@ -29,7 +29,7 @@ async function load(filter: Filter, extra: Record<string, number>): Promise<Feed
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-full border px-3 py-1 text-sm font-medium ${active ? "border-ink bg-ink text-white" : "border-line bg-surface text-ink-soft hover:text-ink"}`}>
+    <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-full border px-3 py-1 text-sm font-medium ${active ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface text-ink-soft hover:text-ink"}`}>
       {children}
     </button>
   );
@@ -114,7 +114,7 @@ export function MonitorFeed({ initial }: { initial: Feed }) {
         <ol className="space-y-3">
           {items.map((item) => (
             <li key={item.id}>
-              <ClaimCard item={item} aside={<LocalTime iso={item.created_at} mode="both" />} />
+              <ClaimCard item={item} aside={<LocalTime iso={item.created_at} />} />
             </li>
           ))}
         </ol>

@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import { initials, nameHue } from "@/lib/format";
 import { photoSrc } from "@/lib/photo";
 
@@ -15,7 +17,7 @@ export function Avatar({ name, photoUrl, size = "md" }: { name: string | null; p
   if (!name) return <span aria-hidden className={`${shape} flex items-center justify-center bg-sunk font-semibold text-ink-faint`}>?</span>;
   const hue = nameHue(name);
   return (
-    <span aria-hidden className={`${shape} flex items-center justify-center font-semibold`} style={{ background: `hsl(${hue} 55% 90%)`, color: `hsl(${hue} 55% 28%)` }}>
+    <span aria-hidden className={`${shape} avatar-initials flex items-center justify-center font-semibold`} style={{ "--hue": hue } as CSSProperties}>
       {initials(name)}
     </span>
   );
