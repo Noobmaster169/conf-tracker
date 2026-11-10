@@ -10,8 +10,8 @@ Three packages, run from inside each. Never run commands at the root.
 
 | Package | What | Port |
 | --- | --- | --- |
-| `backend/` | TypeScript. Sessions, storage, extraction, SSE. | 8093 |
-| `frontend/` | Next.js. The dashboard. | 3000 in dev, 3093 on the box |
+| `backend/` | TypeScript. Sessions, storage, extraction, SSE. | 8094 |
+| `frontend/` | Next.js. The dashboard. | 3000 in dev, 3094 on the box |
 | `proxy/` | Python. The Anthropic wire in front of `claude -p`. | 4003 locally |
 | speech | yt-stream's service on the Monash box, shared with that stack. Not in this repo. | 8100 |
 

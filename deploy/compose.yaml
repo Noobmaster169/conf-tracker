@@ -38,11 +38,11 @@ services:
     image: conf-tracker-api:local
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8093:8093"
+      - "127.0.0.1:8094:8094"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      PORT: "8093"
+      PORT: "8094"
       PG_HOST: postgres
       PG_PORT: "5432"
       PG_DATABASE: conf_tracker
@@ -61,7 +61,7 @@ services:
     healthcheck:
       # /health is 200 when Postgres answers and 503 when it does not. start_period
       # covers the migrations, which run before the process listens.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8094/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -76,9 +76,9 @@ services:
     image: conf-tracker-web:local
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3093:3000"
+      - "127.0.0.1:3094:3000"
     environment:
-      BACKEND_URL: http://api:8093
+      BACKEND_URL: http://api:8094
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
       ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
     depends_on:

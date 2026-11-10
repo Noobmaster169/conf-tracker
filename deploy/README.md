@@ -3,14 +3,15 @@
 `student@118.139.133.14`, reached from the dev machine with `../vps/monash.sh '<command>'`.
 Its firewall blocks every inbound connection, so the api is published through an
 outbound ngrok tunnel and deploys are pulled by cron rather than pushed. This is the
-fourth stack on the box, next to yt-engine, retina and yt-stream; nothing here collides with them.
+sixth stack on the box, next to yt-engine, retina, yt-stream, yt-list and an ollama container; nothing here collides with them
+(yt-list holds 8093 and ngrok's 4043, which is why this stack is on 8094, 3094 and 4044).
 
 | Piece | How | Listens on |
 | --- | --- | --- |
 | Postgres 17 | compose service, private network | nothing published |
-| api | compose service, built on the box from the clone | `127.0.0.1:8093`, and the tunnel |
+| api | compose service, built on the box from the clone | `127.0.0.1:8094`, and the tunnel |
 | llm-proxy | compose service, built on the box from the clone, Claude Code CLI inside | nothing published, api reaches it as llm-proxy:4000 |
-| web | compose service, the dashboard built on the box from the clone | `127.0.0.1:3093`, over an SSH tunnel only |
+| web | compose service, the dashboard built on the box from the clone | `127.0.0.1:3094`, over an SSH tunnel only |
 | speech | **yt-stream's** host process (not part of this stack); its runbook is `~/projects/yt-stream/deploy/README.md` | `172.17.0.1:8100`, the docker bridge only |
 | ngrok | `run-ngrok.sh`, standalone `~/bin/ngrok`, its own account and config | outbound only |
 
@@ -32,18 +33,18 @@ Public URL of the api: `<to fill on first deploy>`.
 ../vps/monash.sh 'tail -5 ~/conf-tracker/deploy.log'                # what auto-deploy did
 ../vps/monash.sh 'cat ~/conf-tracker/.deployed'                     # the last commit that deployed cleanly
 ../vps/monash.sh 'tail -5 ~/yt-stream/speech.log'                   # the shared speech service
-../vps/monash.sh 'curl -s 127.0.0.1:8093/health'                    # the api, from the box
+../vps/monash.sh 'curl -s 127.0.0.1:8094/health'                    # the api, from the box
 ../vps/monash.sh 'cd ~/conf-tracker && docker compose exec llm-proxy curl -s 127.0.0.1:4000/healthz'
-../vps/monash.sh 'curl -s -o /dev/null -w "%{http_code}\n" 127.0.0.1:3093/login'  # the dashboard, from the box
+../vps/monash.sh 'curl -s -o /dev/null -w "%{http_code}\n" 127.0.0.1:3094/login'  # the dashboard, from the box
 ```
 
 ### The dashboard on the box
 
 The `web` service serves the same dashboard as Vercel, on the box's loopback. Open it through a tunnel from
-the dev machine, then browse to `http://localhost:3093`:
+the dev machine, then browse to `http://localhost:3094`:
 
 ```bash
-../vps/monash.sh -N -L 3093:127.0.0.1:3093
+../vps/monash.sh -N -L 3094:127.0.0.1:3094
 ```
 
 Its password is `ACCESS_PASSWORD` in `~/conf-tracker/.env` (read it with
@@ -73,37 +74,31 @@ Reach speech from a dev machine (it binds to the docker bridge, not loopback):
 
 ## First-time setup
 
-1. Create the GitHub repo for conf-tracker and push `main`.
-2. Give the box its own read-only deploy key, `~/.ssh/conf-tracker-deploy`, added to the
-   repo under Deploy keys, with an SSH alias over 443 because the firewall blocks 22:
-   ```
-   Host github.com-conf-tracker
-       Hostname ssh.github.com
-       Port 443
-       User git
-       IdentityFile ~/.ssh/conf-tracker-deploy
-       IdentitiesOnly yes
-   ```
-   `git clone git@github.com-conf-tracker:<owner>/conf-tracker.git ~/projects/conf-tracker`
-3. `mkdir ~/conf-tracker`, copy `deploy/.env.example` to `~/conf-tracker/.env` and fill
+1. The repo is public (`github.com/Noobmaster169/conf-tracker`), so the box clones and pulls over
+   HTTPS with no deploy key: `git clone https://github.com/Noobmaster169/conf-tracker.git ~/projects/conf-tracker`.
+   If it ever goes private, add a read-only deploy key with an SSH alias over 443, as yt-stream does.
+2. `mkdir ~/conf-tracker`, copy `deploy/.env.example` to `~/conf-tracker/.env` and fill
    `PG_PASSWORD` and `API_SHARED_SECRET` with `openssl rand -hex 32`, `ACCESS_PASSWORD`
-   with any long string, and `CLAUDE_CODE_OAUTH_TOKEN` (make one with `claude setup-token`
-   on a logged-in machine). `API_SHARED_SECRET` is also what the frontend sends.
-4. ngrok: a new account (each tunnel on the box has its own). The standalone binary in
-   `~/bin/ngrok` is already installed for yt-stream (not the snap; see `run-ngrok.sh`). Then
+   with any long string, and `CLAUDE_CODE_OAUTH_TOKEN` (the same subscription token as
+   `~/yt-stream/.env`). `API_SHARED_SECRET` is also what the frontend sends.
+3. ngrok: its own account (each tunnel on the box has one). The standalone binary in
+   `~/bin/ngrok` is already installed (not the snap; see `run-ngrok.sh`). Then
    `~/bin/ngrok config add-authtoken <token> --config ~/conf-tracker/ngrok.yml` and add
-   `web_addr: 127.0.0.1:4043` under `agent:` in that file (4040 to 4042 belong to the other
-   three tunnels). The static domain is whatever `ngrok http` prints for this account;
-   write it into "Public URL" above.
-5. Copy `deploy/compose.yaml`, `run-ngrok.sh` and `auto-deploy.sh` into `~/conf-tracker/`,
+   `web_addr: 127.0.0.1:4044` under `agent:` in that file (4040, 4042 and 4043 belong to the
+   other tunnels). With `NGROK_DOMAIN` unset ngrok serves the account's own dev domain; read it from
+   `curl -s 127.0.0.1:4044/api/tunnels` and write it into "Public URL" above.
+4. Copy `deploy/compose.yaml`, `run-ngrok.sh` and `auto-deploy.sh` into `~/conf-tracker/`,
    `chmod +x` the scripts, then `cd ~/conf-tracker && docker compose up -d --build`. The api's
    CMD runs the migrations before it listens. Then `git -C ~/projects/conf-tracker rev-parse HEAD > ~/conf-tracker/.deployed`.
-6. Start ngrok detached, and add it plus the cron line:
+5. Start ngrok detached and add it plus the cron line (append; never replace the crontab, five other stacks live in it):
    ```
-   @reboot NGROK_DOMAIN=<domain> setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
+   setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
+   ```
+   ```
+   @reboot setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
    */3 * * * * /home/student/conf-tracker/auto-deploy.sh
    ```
-7. Smoke: `/health` on the box and through the domain, then one session through the
+6. Smoke: `/health` on the box and through the domain, then one session through the
    domain (`POST /sessions` with the bearer) until a `segment` frame arrives on `/events`.
 
 ## The frontend

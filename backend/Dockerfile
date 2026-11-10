@@ -23,8 +23,8 @@ COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
 USER api
-EXPOSE 8093
-ENV PORT=8093
+EXPOSE 8094
+ENV PORT=8094
 # Migrations gate startup: new code never serves against an old schema, and a failed
 # migration keeps the old container running instead of rolling out a broken one.
 CMD ["sh", "-c", "node db/migrate.mjs && node --import tsx src/index.ts"]

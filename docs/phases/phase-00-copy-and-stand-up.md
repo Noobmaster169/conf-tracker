@@ -6,7 +6,7 @@ Spec: `docs/superpowers/specs/2026-11-09-conf-tracker-design.md`, sections 3, 9 
 ## Local (done on branch `phase-00-copy-and-stand-up`)
 
 - [x] yt-stream `bdb3240` imported (backend, frontend, proxy, deploy; no speech, no history).
-- [x] Renamed to conf-tracker; ports 8093, 5435, 4003, 3093; database `conf_tracker`; compose project `conf-tracker`.
+- [x] Renamed to conf-tracker; ports 8094, 5435, 4003, 3094; database `conf_tracker`; compose project `conf-tracker`.
 - [x] `extract/v3`, a crypto conference baseline prompt, replaces the Bloomberg prompts.
 - [x] `auto-deploy.sh` deploys from a `.deployed` marker and retries a failed build; `run-speech.sh` removed.
 - [x] Suites green: backend 171, frontend 95, proxy 148, `deploy/test-auto-deploy.sh`.

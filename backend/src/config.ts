@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const Env = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  PORT: z.coerce.number().int().positive().default(8093),
+  PORT: z.coerce.number().int().positive().default(8094),
   PG_HOST: z.string().min(1),
   PG_PORT: z.coerce.number().int().positive().default(5435),
   PG_DATABASE: z.string().min(1),

@@ -287,8 +287,8 @@ are matched to the original's by time and quote similarity, as the compare page 
 ## 9. Infrastructure
 
 The Monash box (RTX A5000, 24 GB) as for yt-stream, the fourth stack on it. New ports so it sits
-beside yt-stream, retina and yt-engine (proposed: backend 8093, Postgres 5435, proxy 4003, web
-3093; speech is yt-stream's on 8100), a new ngrok endpoint, a new Vercel project. Same auto-deploy pattern, with the
+beside yt-stream, retina and yt-engine (proposed: backend 8094, Postgres 5435, proxy 4003, web
+3094; speech is yt-stream's on 8100), a new ngrok endpoint, a new Vercel project. Same auto-deploy pattern, with the
 fix noted in yt-stream's PROGRESS (deploy from a marker of the last good commit).
 
 **Where it runs (user's decision).** Nothing live or GPU-bound runs on the dev machine. Build

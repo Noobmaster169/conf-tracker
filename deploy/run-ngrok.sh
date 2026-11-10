@@ -10,18 +10,19 @@
 #
 # Install: curl -fsSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | tar xz -C ~/bin ngrok
 #          ~/bin/ngrok config add-authtoken <token> --config ~/conf-tracker/ngrok.yml
-#          (then add "web_addr: 127.0.0.1:4043" under agent: in that file)
-#          crontab -e -> @reboot NGROK_DOMAIN=<domain> setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
+#          (then add "web_addr: 127.0.0.1:4044" under agent: in that file)
+#          crontab -e -> @reboot setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
 set -u
-# This account's static domain; yt-stream's default is deliberately not copied. Set it in the crontab line.
-NGROK_DOMAIN="${NGROK_DOMAIN:?set NGROK_DOMAIN to this account's static ngrok domain}"
-PORT="${PORT:-8093}"
+# This account's static domain, optional: unset, ngrok serves the account's own dev domain. yt-stream's
+# default is deliberately not copied, so this tunnel can never claim another stack's domain.
+NGROK_DOMAIN="${NGROK_DOMAIN:-}"
+PORT="${PORT:-8094}"
 CONFIG="${CONFIG:-$HOME/conf-tracker/ngrok.yml}"
 LOG="${LOG:-$HOME/conf-tracker/ngrok.log}"
 
 while true; do
-  echo "[$(date -Is)] starting ngrok: $NGROK_DOMAIN -> 127.0.0.1:$PORT" >> "$LOG"
-  "$HOME/bin/ngrok" http --config "$CONFIG" --domain="$NGROK_DOMAIN" "$PORT" --log=stdout >> "$LOG" 2>&1
+  echo "[$(date -Is)] starting ngrok: ${NGROK_DOMAIN:-this account dev domain} -> 127.0.0.1:$PORT" >> "$LOG"
+  "$HOME/bin/ngrok" http --config "$CONFIG" ${NGROK_DOMAIN:+--domain="$NGROK_DOMAIN"} "$PORT" --log=stdout >> "$LOG" 2>&1
   echo "[$(date -Is)] ngrok exited ($?); restarting in 5s" >> "$LOG"
   sleep 5
 done
