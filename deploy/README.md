@@ -23,7 +23,7 @@ collide in speech's `data/` directory.
 Directories: `~/projects/conf-tracker` is the git clone (code); `~/conf-tracker` is the
 running stack (compose, `.env`, `ngrok.yml`, runner scripts, logs, the `.deployed` marker).
 
-Public URL of the api: `<to fill on first deploy>`.
+Public URL of the api: `https://situation-courier-sulfate.ngrok-free.dev` (the dev domain of conf-tracker's own ngrok account).
 `GET /health` needs no key; everything else needs `Authorization: Bearer <API_SHARED_SECRET>`.
 
 ## Day to day

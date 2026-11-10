@@ -14,7 +14,9 @@ Spec: `docs/superpowers/specs/2026-11-09-conf-tracker-design.md`, sections 3, 9 
 ## On the box (operator, not done yet)
 
 1. [ ] Stack up per `deploy/README.md` first-time setup; `/health` answers over the ngrok URL;
-   the dashboard loads on Vercel.
+   the dashboard loads on Vercel. 2026-11-10: stack up and healthy on 8094/3094, proxy answers a
+   `sonnet` call, the api reaches yt-stream's speech, `/health` answers at
+   `https://situation-courier-sulfate.ngrok-free.dev`. Pending: the two crontab lines, the Vercel project.
 2. [ ] One past conference stage video (a full recorded stage stream) started as a session by
    URL; transcript, speakers and claims arrive; it stops cleanly. Record here: the video, its
    length, the claim count and the cost.
