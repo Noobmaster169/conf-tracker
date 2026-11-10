@@ -97,7 +97,7 @@ test("the tracker follows the schedule, dates a switch to its evidence, and a fi
 
 test("extraction is told what is on stage, a named voice becomes the scheduled person, and the pages read it all back", async () => {
   await inRollback(async (tx) => {
-    const { stage, keynote, session } = await setUp(tx);
+    const { stage, keynote, panel, session } = await setUp(tx);
     const hub = createHub(100);
     await spans.switchTo(tx, session.id, { talkId: keynote.id, state: "talk", t: 0, confidence: 0.9, quote: null, source: "tracker", callId: null });
     await speakers.upsert(tx, session.id, { speakerId: "S1", firstSeenT: 0, lastSeenT: 30 });
@@ -114,6 +114,18 @@ test("extraction is told what is on stage, a named voice becomes the scheduled p
     expect(extraction.requests[0]?.user).toContain('## on stage\nConference: Breakpoint, Main stage. The Solana conference.\nSession: "Opening keynote" (keynote)\nSpeakers: Anatoly Yakovenko (Co-Founder, Solana Labs)');
     expect(extraction.requests[0]?.user).toContain("[00:05 S1 Anatoly Yakovenko, Solana Labs] I'm Anatoli");
 
+    // On a fast catch-up the tracker is ahead: it has already moved the stage on to the panel at 300 s. A run over
+    // a window before that must still be told the keynote was on stage.
+    await spans.switchTo(tx, session.id, { talkId: panel.id, state: "talk", t: 300, confidence: 0.9, quote: null, source: "tracker", callId: null });
+    await say(tx, session.id, 40, "and fees fall below a cent");
+    await say(tx, session.id, 310, "lending volumes doubled this year", "S2");
+    const later = fakeLlm(JSON.stringify({ claims: [] }));
+    const catchingUp = createExtractor({ db: tx, hub, sessionId: session.id, llm: later.client, config: ExtractConfig.parse({}) });
+    await catchingUp.tick(60);
+    expect(later.requests[0]?.user).toContain('Session: "Opening keynote" (keynote)');
+    await catchingUp.tick(330);
+    expect(later.requests[1]?.user).toContain('Session: "The state of DeFi" (panel)');
+
     const app = createApp({ db: tx, hub, runner: noRunner });
     const feed = await request(app).get(`/feed?session=${session.id}`).set(auth);
     expect(feed.body.items).toMatchObject([
@@ -123,7 +135,7 @@ test("extraction is told what is on stage, a named voice becomes the scheduled p
     expect((await request(app).get("/feed?limit=0").set(auth)).status).toBe(400);
 
     const video = (await request(app).get("/videos").set(auth)).body.find((v: { session: { id: string } }) => v.session.id === session.id);
-    expect(video).toMatchObject({ stage: { id: stage.id, name: "Main stage", day: "2026-11-10" }, now: { id: keynote.id, title: "Opening keynote" }, claim_count: 1 });
+    expect(video).toMatchObject({ stage: { id: stage.id, name: "Main stage", day: "2026-11-10" }, now: { id: panel.id, title: "The state of DeFi" }, claim_count: 1 });
 
     const person = await request(app).get(`/people/${anatoly.id}`).set(auth);
     expect(person.body).toMatchObject({ person: { name: "Anatoly Yakovenko" }, claim_count: 1, talk_count: 1 });
@@ -131,10 +143,10 @@ test("extraction is told what is on stage, a named voice becomes the scheduled p
     expect(person.body.talks[0]).toMatchObject({ talk: { id: keynote.id }, session_id: session.id, claim_count: 1 });
 
     const talk = await request(app).get(`/talks/${keynote.id}`).set(auth);
-    expect(talk.body).toMatchObject({ talk: { title: "Opening keynote" }, stage: { conference: "Breakpoint" }, session_id: session.id, t0: 0, t1: null, summary: null });
+    expect(talk.body).toMatchObject({ talk: { title: "Opening keynote" }, stage: { conference: "Breakpoint" }, session_id: session.id, t0: 0, t1: 300, summary: null });
     expect(talk.body.claims).toHaveLength(1);
     const snapshot = await request(app).get(`/sessions/${session.id}`).set(auth);
-    expect(snapshot.body).toMatchObject({ stage: { id: stage.id }, spans: [{ talk_id: keynote.id }], people: [{ name: "Anatoly Yakovenko" }, { name: "Jane Doe" }] });
+    expect(snapshot.body).toMatchObject({ stage: { id: stage.id }, spans: [{ talk_id: keynote.id }, { talk_id: panel.id }], people: [{ name: "Anatoly Yakovenko" }, { name: "Jane Doe" }] });
     expect(snapshot.body.talks).toHaveLength(2);
   });
 });

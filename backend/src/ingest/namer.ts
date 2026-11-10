@@ -43,7 +43,7 @@ export function createNamer(deps: NamerDeps): Loop {
       const recent = (await segments.list(db, sessionId, { from, to: last.t1 })).filter((s) => s.t1 <= upTo);
       const window = selectNameWindow(segmentsToLines(recent), roster, config);
       if (!window || window.t1 === answeredT1) return;
-      const context = await loadStageContext(db, sessionId);
+      const context = await loadStageContext(db, sessionId, window.t1);
       const scheduled = context ? scheduledPeople(context) : [];
       const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster, scheduled.map((s) => s.line));
       hub.publish(sessionId, { type: "call", data: result.call });

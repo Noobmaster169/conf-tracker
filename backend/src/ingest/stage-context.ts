@@ -10,19 +10,22 @@ import * as talks from "../repositories/talks";
 export interface StageContext {
   stage: Stage;
   schedule: Talk[];
-  /** The span running now, and the talk it is, when it is one. */
+  /** The span running now (or at the time asked about), and the talk it is, when it is one. */
   running: Span | null;
   current: Talk | null;
 }
 
-/** Null when the video has no stage: everything then runs as it did before there were schedules. */
-export async function loadStageContext(db: Queryable, sessionId: string): Promise<StageContext | null> {
+/**
+ * Null when the video has no stage: everything then runs as it did before there were schedules. With `at`, the stage
+ * as it was at that stream time, for a loop working through a window the tracker has already moved past.
+ */
+export async function loadStageContext(db: Queryable, sessionId: string, at?: number): Promise<StageContext | null> {
   const session = await sessions.get(db, sessionId);
   if (!session?.stage_id) return null;
   const stage = await stages.get(db, session.stage_id);
   if (!stage) return null;
   const schedule = await talks.forStage(db, stage.id);
-  const running = await spans.open(db, sessionId);
+  const running = at === undefined ? await spans.open(db, sessionId) : await spans.at(db, sessionId, at);
   return { stage, schedule, running, current: schedule.find((talk) => talk.id === running?.talk_id) ?? null };
 }
 

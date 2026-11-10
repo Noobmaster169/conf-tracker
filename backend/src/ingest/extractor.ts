@@ -49,7 +49,7 @@ export function createExtractor(deps: ExtractorDeps): Extractor {
       const prior = await claims.latest(db, sessionId, config.dedupe_n);
       const names = labelMap(await speakers.list(db, sessionId), await people.forSession(db, sessionId));
       // The schedule's view of the stage, when the video has one: who "we" is, and what the session is about.
-      const context = await loadStageContext(db, sessionId);
+      const context = await loadStageContext(db, sessionId, window.t1);
       const result = await runExtraction({ db, llm, sessionId, prompt }, window, prior, names, context ? onStageText(context) : null);
       hub.publish(sessionId, { type: "call", data: result.call });
       if (result.claims.length > 0) hub.publish(sessionId, { type: "claims.new", data: result.claims });

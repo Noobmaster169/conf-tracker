@@ -27,6 +27,15 @@ export async function open(db: Queryable, sessionId: string): Promise<Span | nul
   return rows[0] ? toSpan(rows[0]) : null;
 }
 
+/**
+ * What was on stage at stream time t: the last span that had started by then. A run over an earlier window must not
+ * read today's belief, because on a fast catch-up the tracker is minutes of stream time ahead of the other loops.
+ */
+export async function at(db: Queryable, sessionId: string, t: number): Promise<Span | null> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from talk_spans where session_id = $1 and t0 <= $2 order by t0 desc, id desc limit 1`, [sessionId, t]);
+  return rows[0] ? toSpan(rows[0]) : null;
+}
+
 export interface NewSpan {
   talkId: number | null;
   state: SpanState;

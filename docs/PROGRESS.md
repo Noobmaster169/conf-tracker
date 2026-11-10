@@ -65,8 +65,16 @@ New:
 - Monitor polls every five seconds per open tab instead of using a conference-wide SSE channel.
 - The video page of a long recording renders the whole transcript at once.
 
-- Speech's `HlsSource` reads a past video's URL as fast as ffmpeg delivers, and the resolved URL can
-  expire on a 6 to 9 hour video. Phase 4 downloads the audio first.
+- Fixed 2026-11-10 in yt-stream's speech (`YoutubeSource`): a past video is read once at full speed and the stream ends
+  when it does, and a live stream is read from its first second (catching up at several times real time) and then
+  followed. Before this a past video was read in a loop: the first production run transcribed a 22 minute panel 13 times.
+  A dropped connection re-reads from the top and skips what was delivered, so it costs a re-download, not a duplicate.
+- On a fast run the loops finish well after the transcript does: model calls queue on stream time and are worked through
+  in order. A summary may be written before the namer has reached that talk's speakers, so it can lack a name the
+  transcript later shows.
+- A live stream with rewind disabled cannot be read from its start; speech falls back to joining at the live edge.
+- A stream that has not started yet ("scheduled") is refused by yt-dlp and the video ends with an error; start it once
+  it is live.
 
 From the phase 0 review (deferred, not fixed):
 
