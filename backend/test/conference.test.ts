@@ -46,7 +46,7 @@ async function setUp(db: Queryable) {
 
 const trackAnswer = (talkId: number | null, quote: string, confidence = 0.95) =>
   JSON.stringify({ state: talkId === null ? "break" : "talk", talk_id: talkId, confidence, quote });
-const summary = { headline: "Firedancer ships in Q1", overview: "Anatoly laid out the roadmap.", key_points: ["Firedancer is next."], announcements: [], numbers: [], quotes: [] };
+const article = "# **Firedancer** Ships in Q1\n\nAnatoly Yakovenko laid out the roadmap.\n\n## What Comes Next\n\nFiredancer is next.";
 
 test("the tracker follows the schedule, dates a switch to its evidence, and a finished talk gets its summary", async () => {
   await inRollback(async (tx) => {
@@ -55,7 +55,7 @@ test("the tracker follows the schedule, dates a switch to its evidence, and a fi
     const seen: LiveEvent[] = [];
     hub.subscribe(session.id, (e) => seen.push(e));
     const llm = fakeLlm((req) => {
-      if (req.system.includes("briefing")) return JSON.stringify(summary);
+      if (req.system.includes("executive summary")) return article;
       if (req.user.includes("state of DeFi panel")) return trackAnswer(panel.id, "next up is the state of DeFi panel");
       return trackAnswer(keynote.id, "please welcome Anatoly Yakovenko");
     });
@@ -81,10 +81,15 @@ test("the tracker follows the schedule, dates a switch to its evidence, and a fi
     expect(timeline.map((s) => [s.talk_id, s.t0, s.t1])).toEqual([[keynote.id, 10, 400], [panel.id, 400, 415]]);
     expect(seen.filter((e) => e.type === "span")).toHaveLength(4);
     // The keynote ran six and a half minutes and is summarised; the panel's fifteen seconds are not a talk worth one.
-    expect((await summaries.latest(tx, keynote.id))?.summary.headline).toBe("Firedancer ships in Q1");
+    // The article is kept whole, and its headline is lifted out of the first heading for the lists.
+    expect((await summaries.latest(tx, keynote.id))?.summary).toEqual({ headline: "Firedancer Ships in Q1", content: article });
     expect(await summaries.latest(tx, panel.id)).toBeNull();
-    const summaryRequest = llm.requests.find((r) => r.system.includes("briefing"));
-    expect(summaryRequest?.user).toContain('"Opening keynote" (keynote)');
+    const summaryRequest = llm.requests.find((r) => r.system.includes("executive summary"));
+    // A six-minute talk asks for the short article, on the strongest model, as free text.
+    expect(summaryRequest).toMatchObject({ model: "opus", maxTokens: 8192 });
+    expect(summaryRequest?.outputSchema).toBeUndefined();
+    expect(summaryRequest?.system).toContain("(400-800 words)");
+    expect(summaryRequest?.user).toContain('Session: "Opening keynote" (keynote)\nSpeakers: Anatoly Yakovenko (Co-Founder, Solana Labs)\nDuration: ~1 minutes\n\nTranscript:\n[00:10 S9] please welcome');
     expect(summaryRequest?.user).toContain("Firedancer ships in the first quarter");
     expect(summaryRequest?.user).not.toContain("lending volumes");
   });

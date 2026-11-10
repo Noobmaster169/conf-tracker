@@ -1,9 +1,13 @@
-import { type Stage, SummaryBody, type Talk, type TalkSummary } from "../contracts";
+import type { Stage, Talk, TalkSummary } from "../contracts";
+import { childLogger } from "../lib/logger";
 import type { Line } from "../pipeline/lines";
 import { speakerList, stageLine } from "../pipeline/tracking";
 import { renderLine } from "../pipeline/window";
+import * as calls from "../repositories/calls";
 import * as summaries from "../repositories/summaries";
-import { callStructured, type StructuredDeps } from "./structured";
+import type { StructuredDeps } from "./structured";
+
+const log = childLogger({ module: "summarize" });
 
 // About 40k tokens: more than an hour of speech. A longer talk keeps its start and its end, where the framing and the conclusions are.
 const MAX_CHARS = 160_000;
@@ -38,16 +42,69 @@ export interface SummarizeInput {
   names: ReadonlyMap<string, string>;
 }
 
-/** The user message: the sections agents/prompts/summarize names, in this order. */
-export function renderSummaryInput({ stage, talk, lines, names }: SummarizeInput): string {
-  const session = [`"${talk.title}" (${talk.kind})`, talk.description, `Speakers: ${speakerList(talk)}`].filter(Boolean).join("\n");
-  return `## stage\n${stageLine(stage)}\n\n## session\n${session}\n\n## transcript\n${renderTranscript(lines, names)}`;
+/** How long the article should be for a session of this length: yt-engine's getWordCountRange, unchanged. */
+export function wordCountRange(minutes: number): { min: number; max: number } {
+  if (minutes < 15) return { min: 400, max: 800 };
+  if (minutes <= 45) return { min: 800, max: 1500 };
+  return { min: 1200, max: 2000 };
 }
 
-/** One summary of one talk, stored with the call that wrote it. Null when the model failed; the failure is the call's row. */
-export async function runSummary(deps: StructuredDeps, input: SummarizeInput): Promise<TalkSummary | null> {
-  const window = { t0: input.lines[0]?.t0 ?? 0, t1: input.lines.at(-1)?.t1 ?? 0 };
-  const { call, data } = await callStructured(deps, SummaryBody, window, renderSummaryInput(input));
-  if (!data) return null;
-  return summaries.insert(deps.db, { talkId: input.talk.id, sessionId: deps.sessionId, callId: call.id, summary: data });
+/** The time the talk was actually on stage: the sum of its lines' spans, so a break in the middle does not count. */
+export function heardMinutes(lines: Line[]): number {
+  return lines.reduce((s, line) => s + Math.max(0, line.t1 - line.t0), 0) / 60;
 }
+
+/** The user message: a header about the session, then the transcript, as yt-engine's buildUserMessage lays it out. */
+export function renderSummaryInput({ stage, talk, lines, names }: SummarizeInput): string {
+  const header = [
+    `Conference: ${stageLine(stage)}`,
+    `Session: "${talk.title}" (${talk.kind})`,
+    talk.description ? `About: ${talk.description}` : null,
+    `Speakers: ${speakerList(talk)}`,
+    `Duration: ~${Math.max(1, Math.round(heardMinutes(lines)))} minutes`,
+  ].filter(Boolean);
+  return `${header.join("\n")}\n\nTranscript:\n${renderTranscript(lines, names)}`;
+}
+
+/** The article's headline: its first `#` heading, or failing that its first line, without the markdown around it. */
+export function headlineOf(article: string): string {
+  const lines = article.split("\n").map((line) => line.trim()).filter(Boolean);
+  const heading = lines.find((line) => /^#\s+/.test(line)) ?? lines[0] ?? "";
+  return heading.replace(/^#+\s*/, "").replace(/\*\*/g, "").trim();
+}
+
+/**
+ * One summary of one talk: a markdown article written with yt-engine's summary prompt (prompts/summarize), stored with
+ * the call that wrote it. Every attempt is a row in llm_calls. Null when the model failed or wrote nothing; the reason
+ * is on the call's row.
+ */
+export async function runSummary(deps: StructuredDeps, input: SummarizeInput): Promise<TalkSummary | null> {
+  const { db, llm, sessionId, prompt } = deps;
+  const range = wordCountRange(heardMinutes(input.lines));
+  const system = prompt.text.replace("{{word_min}}", String(range.min)).replace("{{word_max}}", String(range.max));
+  const user = renderSummaryInput(input);
+  const base = {
+    step: prompt.step, promptVersion: prompt.version, windowT0: input.lines[0]?.t0 ?? 0, windowT1: input.lines.at(-1)?.t1 ?? 0, attempt: 1, input: user,
+  };
+  const started = Date.now();
+  try {
+    const response = await llm.complete({ model: prompt.model, system, user, maxTokens: prompt.maxTokens });
+    const content = response.text.trim();
+    const headline = headlineOf(content);
+    const call = await calls.insert(db, sessionId, {
+      ...base, model: response.model ?? prompt.model, output: response.text, parsed: headline ? { headline } : null,
+      inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens, costUsd: response.costUsd, latencyMs: response.latencyMs,
+      error: headline ? null : "the model wrote no article",
+    });
+    if (!headline) return null;
+    return await summaries.insert(db, { talkId: input.talk.id, sessionId, callId: call.id, summary: { headline, content } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn({ sessionId, talkId: input.talk.id, err: message }, "summary call failed");
+    await calls.insert(db, sessionId, {
+      ...base, model: prompt.model, output: null, parsed: null, inputTokens: null, outputTokens: null, costUsd: null, latencyMs: Date.now() - started, error: message,
+    });
+    return null;
+  }
+}
+

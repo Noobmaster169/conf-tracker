@@ -64,15 +64,8 @@ export const Span = z.object({
 });
 export type Span = z.infer<typeof Span>;
 
-// What the model writes about a finished talk. Every list may be empty; nothing is padded to fill one.
-export const SummaryBody = z.object({
-  headline: z.string().min(1),
-  overview: z.string().min(1),
-  key_points: z.array(z.string().min(1)),
-  announcements: z.array(z.string().min(1)),
-  numbers: z.array(z.string().min(1)),
-  quotes: z.array(z.object({ speaker: z.string(), quote: z.string().min(1) })),
-});
+// The briefing written about a finished talk: a markdown article, and its headline lifted out for the lists.
+export const SummaryBody = z.object({ headline: z.string().min(1), content: z.string().min(1) });
 export type SummaryBody = z.infer<typeof SummaryBody>;
 
 export const TalkSummary = z.object({ id: z.number(), talk_id: z.number(), session_id: z.string(), summary: SummaryBody, created_at: z.string() });
@@ -94,7 +87,8 @@ export const SummaryConfig = z.object({
   summarize: z.boolean().default(true),
   // A span shorter than this is a false start or a hand-off, not a talk worth a summary.
   summary_min_s: z.number().nonnegative().default(180),
-  summary_model: z.string().min(1).default("sonnet"),
+  // One call per talk, and the writing is the product, so it gets the strongest tier (as yt-engine summarises).
+  summary_model: z.string().min(1).default("opus"),
   summary_prompt: z.string().regex(/^v\d+$/).default("v1"),
 });
 export type SummaryConfig = z.infer<typeof SummaryConfig>;

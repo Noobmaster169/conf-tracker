@@ -590,79 +590,8 @@
       }
     ],
     "summaries": {
-      "Halcyon: the next two years": {
-        "headline": "Halcyon's Lattice upgrade goes live on mainnet on March 3, alongside a settlement pilot with Kestrel Bank.",
-        "overview": "Mira Voss set out Halcyon's plan for the next two years around four commitments: the Lattice upgrade on a fixed date, fees close to zero, more than one validator client, and regulated banks settling on chain. She acknowledged that June's five-hour outage was the team's own fault and presented client diversity as the answer to it. She closed with a view of the industry: blockspace is about to be abundant everywhere, so distribution through wallets and banks, not benchmarks, will decide which chains last.",
-        "key_points": [
-          "Lattice replaces Halcyon's execution scheduler and ships to mainnet on March 3; Voss called the date locked.",
-          "On testnet Lattice held 85,000 transactions per second for 90 days, against a mainnet peak of about 11,000 today.",
-          "Halcyon Labs has funded two independent validator clients after June's outage and wants no client above half of stake by the end of next year.",
-          "Kestrel Bank will settle tokenised deposits on Halcyon, starting with a pilot in the second quarter.",
-          "Voss argued the scaling debate is over and that most of today's layer twos will be gone within three years."
-        ],
-        "announcements": [
-          "Halcyon Labs will activate the Lattice upgrade on mainnet on March 3.",
-          "Halcyon Labs and Kestrel Bank will pilot settlement of Kestrel's tokenised deposits on Halcyon in the second quarter.",
-          "The Halcyon ecosystem fund is committing $50 million to consumer payments teams, with applications opening next week.",
-          "Halcyon plans to ship native account abstraction in the second half of next year."
-        ],
-        "numbers": [
-          "Lattice sustained 85,000 transactions per second with a 400 ms median confirmation on testnet, according to Mira Voss.",
-          "Halcyon passed 4.2 million daily active addresses in October, up from 1.6 million a year earlier.",
-          "Halcyon counted 3,100 monthly active developers last month, its highest figure.",
-          "Kestrel Bank holds $40 billion in deposits, according to Voss."
-        ],
-        "quotes": [
-          {
-            "speaker": "Mira Voss",
-            "quote": "The scaling debate is over. Blockspace is going to be abundant on every serious chain within two years."
-          },
-          {
-            "speaker": "Mira Voss",
-            "quote": "The outage in June lasted five hours and it was our fault."
-          },
-          {
-            "speaker": "Mira Voss",
-            "quote": "This is not a marketing partnership. They are putting real balances on chain."
-          }
-        ]
-      },
-      "Stablecoins after the yield era": {
-        "headline": "Tessel will share half of its reserve yield with holders from January and has applied for a national trust charter.",
-        "overview": "Elena Park pressed a stablecoin issuer and a bank on what is left of the business now that reserve income has fallen. Priya Raman said Tessel has turned into a payments company and will start passing yield to holders; Jonas Weller said Kestrel's corporate clients pushed it on chain by asking for weekend settlement. They disagreed on the end state: Weller expects businesses to prefer insured, interest-paying deposit tokens, while Raman argued that open stablecoins beat instruments that only work inside one bank. Both expect the two to converge under bank-like regulation.",
-        "key_points": [
-          "Tessel's reserve income fell about 40 percent year on year even as supply grew to $9 billion, Priya Raman said.",
-          "Sixty percent of Tessel's transfer volume is now merchant settlement and payroll rather than trading.",
-          "Kestrel Bank will pilot tokenised deposits with twelve corporate clients in the second quarter, Jonas Weller said.",
-          "Weller argued a tokenised deposit is not a stablecoin: it is an insured, interest-bearing claim on the bank.",
-          "Raman countered that a deposit token only works between clients of the same bank, and open networks win.",
-          "Weller predicted that within three years the difference will be a legal detail customers never see."
-        ],
-        "announcements": [
-          "Tessel will pass half of its reserve yield to wallets holding for more than thirty days, starting in January.",
-          "Tessel filed for a national trust charter in September and expects a decision in the first half of next year.",
-          "Kestrel Bank will launch its tokenised deposit pilot in the second quarter with twelve corporate clients."
-        ],
-        "numbers": [
-          "Tessel's circulating supply is $9 billion, up from $6 billion in January, according to Priya Raman.",
-          "Kestrel expects about $2 billion a month to move through its deposit pilot by year end, according to Jonas Weller.",
-          "Stablecoin supply on Halcyon is $14 billion today; Raman predicts $50 billion within a year."
-        ],
-        "quotes": [
-          {
-            "speaker": "Priya Raman",
-            "quote": "Open networks beat closed ones, they always have."
-          },
-          {
-            "speaker": "Jonas Weller",
-            "quote": "If stablecoins pay yield, they compete directly with deposits."
-          },
-          {
-            "speaker": "Priya Raman",
-            "quote": "The big change is that the yield went away."
-          }
-        ]
-      }
+      "Halcyon: the next two years": "# Halcyon Locks March 3 for Lattice and Puts Kestrel Bank's Deposits On Chain\n\nMira Voss paired a fixed mainnet date with an eightfold throughput claim, a $50 million payments fund and a blunt forecast that most layer twos will not survive three years.\n\n**Halcyon Labs** will activate its **Lattice** upgrade on mainnet on **March 3**, and co-founder **Mira Voss** called the date locked. Lattice replaces the network's execution scheduler, and Voss used the keynote to argue that it ends the scaling question for Halcyon and turns the contest into one about who has banks and wallets already plugged in.\n\n## An Eightfold Jump on the Same Hardware\n\nOn the public testnet, Lattice held **85,000 transactions per second** for ninety days with a median confirmation of **400 milliseconds**. Mainnet peaks at about **11,000** today, so the claim is close to eight times the throughput without new hardware. Fees follow: Voss said the median cost of a simple transfer falls below a hundredth of a cent, which in her words makes fees a rounding error for consumer applications.\n\nThe network she is upgrading is growing. Halcyon passed **4.2 million daily active addresses** in October, up from 1.6 million a year earlier, and counted **3,100 monthly active developers**, its highest figure.\n\n## Owning the June Outage\n\nVoss did not soften the five-hour outage in June. It came from a bug in the gossip layer that the team's own tests should have caught, and the remedy is structural: Halcyon Labs has funded two independent validator clients, starting with **Ironwood**, and wants no single client running more than half of the stake by the end of next year.\n\n> The outage in June lasted five hours and it was our fault.\n>\n> — Mira Voss\n\n## A Regulated Bank Settles on Halcyon\n\nThe second announcement was a partnership with **Kestrel Bank**, which holds **$40 billion** in deposits and will settle its tokenised deposits on Halcyon, beginning with a pilot in the second quarter. Voss was explicit that this is balance-sheet activity, not a logo swap.\n\n> This is not a marketing partnership. They are putting real balances on chain.\n>\n> — Mira Voss\n\n## Blockspace Is Cheap, Distribution Is Not\n\nHer view of the industry is that abundant blockspace arrives on every serious chain within two years. What stays scarce is distribution, so the winners are the chains that wallets and banks already integrate. The corollary is harsh for rollups whose only product was cheaper blockspace: Voss expects most of today's layer twos to be gone in three years.\n\n> Blockspace is going to be abundant on every serious chain within two years.\n>\n> — Mira Voss\n\n## What to Watch\n\nThree dates now frame Halcyon's year: Lattice on March 3, the Kestrel pilot in the second quarter, and native account abstraction in the second half. The **$50 million** ecosystem fund commitment to consumer payments teams, with applications opening next week, shows where the lab wants the new capacity spent. The client-diversity target is the one to hold it to, because it is the only answer offered to June.",
+      "Stablecoins after the yield era": "# Tessel Will Share Half Its Reserve Yield as Kestrel Readies a $2 Billion-a-Month Deposit Pilot\n\nA stablecoin issuer and a bank disagreed on which instrument businesses will hold, and agreed that regulation is about to make the two look alike.\n\n**Tessel** will pass half of its reserve yield to holders from January, chief executive **Priya Raman** said, for wallets that hold longer than thirty days. The move concedes the point the panel was convened around: the easy income from sitting on treasury bills has shrunk, and issuers now have to pay for the balances they hold.\n\n## The Yield Went Away\n\nRaman put a number on the squeeze. Tessel's reserve income is down about **40 percent** year on year even though supply grew to **$9 billion** from $6 billion in January. The company's answer has been to become a payments business, with **60 percent** of transfer volume now merchant settlement and payroll rather than trading.\n\n> The big change is that the yield went away.\n>\n> — Priya Raman\n\n## Why a Bank Came On Chain\n\n**Jonas Weller**, head of digital assets at **Kestrel Bank**, said the push came from corporate clients asking for settlement on weekends. Kestrel's tokenised deposit pilot starts in the second quarter with **twelve corporate clients**, and he expects about **$2 billion a month** to move through it by the end of the year. He drew a hard line between the products: a tokenised deposit is an insured, interest-paying claim on the bank, and he thinks that is what most businesses will want to hold.\n\n## Open Networks Against Closed Ones\n\nRaman rejected that. A deposit token only works between clients of the same bank, while a stablecoin works between everyone.\n\n> Open networks beat closed ones, they always have.\n>\n> — Priya Raman\n\nWeller's reply was regulatory rather than technical: non-banks will not be allowed to hold $9 billion of other people's money without bank-like rules for much longer. Tessel appears to agree in practice. It filed for a national trust charter in September and expects a decision in the first half of next year.\n\n## Convergence\n\nAsked by moderator **Elena Park** whether yield-bearing stablecoins worry him, Weller said a little, because they compete directly with deposits. His forecast is that within three years the difference between the two becomes a legal detail the customer never sees. The closing predictions were both bullish: Raman expects stablecoin supply on Halcyon to pass **$50 billion** within a year, from $14 billion today, and Weller expects more than half of Kestrel's cross-border corporate payments to settle on chain.\n\nThe question left open is who captures the margin once both instruments pay yield and both issuers carry a licence."
     }
   }
 }

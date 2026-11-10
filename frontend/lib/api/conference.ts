@@ -44,14 +44,8 @@ export const Span = z.object({
 });
 export type Span = z.infer<typeof Span>;
 
-export const SummaryBody = z.object({
-  headline: z.string(),
-  overview: z.string(),
-  key_points: z.array(z.string()),
-  announcements: z.array(z.string()),
-  numbers: z.array(z.string()),
-  quotes: z.array(z.object({ speaker: z.string(), quote: z.string() })),
-});
+// A markdown article, and its headline lifted out for the lists.
+export const SummaryBody = z.object({ headline: z.string(), content: z.string() });
 export type SummaryBody = z.infer<typeof SummaryBody>;
 
 export const TalkSummary = z.object({ id: z.number(), talk_id: z.number(), session_id: z.string(), summary: SummaryBody, created_at: z.string() });

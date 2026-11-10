@@ -1,41 +1,39 @@
-import type { SummaryBody } from "@/lib/api/conference";
+import ReactMarkdown from "react-markdown";
 
-function List({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <section>
-      <h3 className="mb-2 font-semibold">{title}</h3>
-      <ul className="max-w-[72ch] list-disc space-y-1.5 pl-5 marker:text-ink-faint">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+import { separateAttributions } from "@/lib/summary-markdown";
 
-/** A finished session as a briefing: the one-line news first, then the argument, then the lists a reader scans for. */
-export function Summary({ summary }: { summary: SummaryBody }) {
+/**
+ * A finished session as the article written about it. Only the handful of elements an article uses are styled: the
+ * headline, the subhead under it, section headings, paragraphs, lists and pull-quotes, whose last line is the
+ * attribution.
+ */
+export function Summary({ content }: { content: string }) {
   return (
-    <div className="space-y-7">
-      <p className="max-w-[40ch] text-[26px] font-semibold leading-tight tracking-tight">{summary.headline}</p>
-      <p className="max-w-[72ch] text-[17px] leading-relaxed">{summary.overview}</p>
-      <List title="Key points" items={summary.key_points} />
-      <List title="Announcements" items={summary.announcements} />
-      <List title="Numbers" items={summary.numbers} />
-      {summary.quotes.length > 0 && (
-        <section>
-          <h3 className="mb-3 font-semibold">In their words</h3>
-          <div className="space-y-4">
-            {summary.quotes.map((q) => (
-              <figure key={q.quote} className="max-w-[72ch] border-l-[3px] border-accent pl-4">
-                <blockquote className="text-[17px] leading-snug">&ldquo;{q.quote}&rdquo;</blockquote>
-                {q.speaker && <figcaption className="mt-1 text-[13px] text-ink-soft">{q.speaker}</figcaption>}
-              </figure>
-            ))}
-          </div>
-        </section>
-      )}
+    <div className="max-w-[72ch]">
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => <h2 className="text-[26px] font-bold leading-tight tracking-tight">{children}</h2>,
+          h2: ({ children }) => <h3 className="mt-9 text-xl font-semibold leading-snug">{children}</h3>,
+          h3: ({ children }) => <h4 className="mt-6 font-semibold">{children}</h4>,
+          // The paragraph straight under the headline is the subhead.
+          p: ({ children }) => <p className="mt-4 text-[16px] leading-relaxed [h2+&]:mt-3 [h2+&]:text-[18px] [h2+&]:leading-snug [h2+&]:text-ink-soft">{children}</p>,
+          ul: ({ children }) => <ul className="mt-4 list-disc space-y-1.5 pl-5 text-[16px] leading-relaxed marker:text-ink-faint">{children}</ul>,
+          ol: ({ children }) => <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-[16px] leading-relaxed">{children}</ol>,
+          blockquote: ({ children }) => (
+            <blockquote className="my-6 border-l-[3px] border-accent pl-4 [&>p]:mt-1 [&>p]:text-[19px] [&>p]:font-medium [&>p]:leading-snug [&>p:first-child]:mt-0 [&>p:last-child:not(:first-child)]:text-[13px] [&>p:last-child:not(:first-child)]:font-normal [&>p:last-child:not(:first-child)]:text-ink-soft">
+              {children}
+            </blockquote>
+          ),
+          a: ({ href, children }) => (
+            <a href={href} className="text-accent underline">
+              {children}
+            </a>
+          ),
+          hr: () => <hr className="mt-8 border-line" />,
+        }}
+      >
+        {separateAttributions(content)}
+      </ReactMarkdown>
     </div>
   );
 }

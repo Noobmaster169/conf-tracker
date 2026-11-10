@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { LlmClient } from "../src/agents/llm-client";
-import { SummaryBody, type Talk } from "../src/contracts";
+import type { Talk } from "../src/contracts";
 
 /**
  * A stand-in for the model, for `pnpm simulate --scripted` on a machine with no model login. It answers each step
@@ -13,7 +13,8 @@ export const Scripted = z.object({
   track: z.array(z.object({ from: z.number(), title: z.string().nullable(), quote: z.string() })),
   names: z.array(z.object({ speaker_id: z.string(), name: z.string(), role: z.string().nullable(), confidence: z.number(), quote: z.string() })),
   claims: z.array(z.object({ claim: z.string(), kind: z.string(), importance: z.number(), topics: z.array(z.string()), polarity: z.string(), quote: z.string() })),
-  summaries: z.record(z.string(), SummaryBody),
+  // A markdown article per talk title.
+  summaries: z.record(z.string(), z.string()),
 });
 export type Scripted = z.infer<typeof Scripted>;
 
@@ -37,7 +38,7 @@ export function scriptedLlm(script: Scripted, schedule: Talk[]): LlmClient {
       const unnamed = section(user, "## speakers").split("## transcript")[0]!;
       return { proposals: script.names.filter((n) => transcript.includes(n.quote) && unnamed.includes(`${n.speaker_id}: (unnamed)`)) };
     }
-    if (system.includes("briefing")) {
+    if (system.includes("executive summary")) {
       const title = Object.keys(script.summaries).find((t) => user.includes(`"${t}"`));
       if (!title) throw new Error("no scripted summary for this session");
       return script.summaries[title];
@@ -47,8 +48,9 @@ export function scriptedLlm(script: Scripted, schedule: Talk[]): LlmClient {
   };
   return {
     async complete(request) {
+      const reply = answer(request.system, request.user);
       return {
-        text: JSON.stringify(answer(request.system, request.user)),
+        text: typeof reply === "string" ? reply : JSON.stringify(reply),
         model: "scripted", stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0 }, costUsd: 0, latencyMs: 1,
       };
     },

@@ -60,7 +60,7 @@ export default async function SessionPage({ params }: PageProps<"/sessions/[id]"
       {talk.description && <p className="mt-6 max-w-[72ch] text-ink-soft">{talk.description}</p>}
 
       <section aria-label="Summary" className="mt-8 rounded-2xl border border-line bg-surface p-6 sm:p-8">
-        {summary ? <Summary summary={summary.summary} /> : <p className="text-ink-soft">{WAITING[detail.status]}</p>}
+        {summary ? <Summary content={summary.summary.content} /> : <p className="text-ink-soft">{WAITING[detail.status]}</p>}
       </section>
 
       {claims.length > 0 && (

@@ -9,6 +9,10 @@ and parts of 3 forward, and added per-session summaries, which the design had li
 - Built: stages, schedules (form and paste), people, videos bound to a stage, the tracker loop and timeline, admin
   correction of what is on stage, schedule-aware naming with person linking, `extract/v4` with kind and importance,
   a summary per finished session, the feed and card routes.
+- The summary is a markdown article written with yt-engine's summary prompt (`lib/summaries/prompts/summary.md` on its
+  `main`, as of 2026-11-10), adapted only where a conference session differs from a video: the speaker-attributed
+  transcript format, the schedule header, attribution by name. Same word ranges by length, same model tier (`opus`),
+  same 8192 token ceiling. It is `summarize/v1` here; when yt-engine's prompt improves, port the diff.
 - Verified only with fakes and scripted answers (`pnpm simulate --scripted`): no model login and no speech service were
   reachable from the dev machine. **The four new prompts have never been run against a real model or a real stream.**
   First thing to do on the box: one past conference video on a stage with its real schedule.

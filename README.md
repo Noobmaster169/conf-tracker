@@ -21,7 +21,7 @@ the schedule says; a named voice is linked to a **person**; a claim belongs to t
 timeline covers it; and a session that leaves the stage gets its summary.
 
 In the code a scheduled session is a `talk` and a video is a `session` (the table yt-stream started with), so the two
-never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize}`.
+never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize}`. The summary prompt is yt-engine's, adapted for a conference session.
 
 Started from yt-stream at `bdb3240` (`/root/ai/fiber/yt-stream`).
 
