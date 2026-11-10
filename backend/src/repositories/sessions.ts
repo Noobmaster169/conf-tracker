@@ -115,3 +115,27 @@ export async function forStage(db: Queryable, stageId: string): Promise<Session[
   const { rows } = await db.query<Row>(`select ${COLUMNS} from sessions where stage_id = $1 and replay_of is null order by created_at desc`, [stageId]);
   return rows.map(toSession);
 }
+
+export async function setTitle(db: Queryable, id: string, title: string | null): Promise<Session> {
+  const { rows } = await db.query<Row>(`update sessions set title = $2 where id = $1 returning ${COLUMNS}`, [id, title]);
+  return toFoundSession(id, rows[0]);
+}
+
+/** How many replays were made of a video. They read its recording, so it cannot go while they are there. */
+export async function replayCount(db: Queryable, id: string): Promise<number> {
+  const { rows } = await db.query<{ n: number }>("select count(*)::int as n from sessions where replay_of = $1", [id]);
+  return rows[0]?.n ?? 0;
+}
+
+// Everything stored for a video, children before what they point at: speakers and claims name the calls that made them.
+const OWNED = ["talk_summaries", "talk_spans", "name_proposals", "claims", "speakers", "turns", "diar_windows", "segments", "events", "llm_calls"] as const;
+
+/**
+ * Takes a video out for good, with its transcript, voices, claims, timeline, summaries and model calls. The people it
+ * named and the schedule stay. The recording on the speech service is not touched. Run inside one transaction.
+ */
+export async function remove(db: Queryable, id: string): Promise<boolean> {
+  for (const table of OWNED) await db.query(`delete from ${table} where session_id = $1`, [id]);
+  const { rowCount } = await db.query("delete from sessions where id = $1", [id]);
+  return (rowCount ?? 0) > 0;
+}

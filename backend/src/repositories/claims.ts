@@ -90,3 +90,34 @@ export async function topicCounts(db: Queryable, sessionId: string, range: { fro
   );
   return rows.map((row) => TopicCount.parse(row));
 }
+
+export async function get(db: Queryable, id: number): Promise<Claim | null> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from claims where id = $1`, [id]);
+  return rows[0] ? toClaim(rows[0]) : null;
+}
+
+export interface ClaimChange {
+  claim?: string;
+  kind?: ClaimKind;
+  importance?: number;
+  topics?: string[];
+  polarity?: Polarity;
+  speaker_id?: string | null;
+}
+
+const CHANGEABLE = ["claim", "kind", "importance", "topics", "polarity", "speaker_id"] as const;
+
+/** A correction by hand: only the fields given change. The quote, its time and the call that produced the claim stay as they were. */
+export async function change(db: Queryable, id: number, input: ClaimChange): Promise<Claim | null> {
+  const fields = CHANGEABLE.filter((field) => input[field] !== undefined);
+  if (fields.length === 0) return get(db, id);
+  const sets = fields.map((field, i) => `${field} = $${i + 2}${field === "topics" ? "::text[]" : ""}`);
+  const { rows } = await db.query<Row>(`update claims set ${sets.join(", ")} where id = $1 returning ${COLUMNS}`, [id, ...fields.map((field) => input[field])]);
+  return rows[0] ? toClaim(rows[0]) : null;
+}
+
+/** Takes a claim out for good. False when there is no such claim. */
+export async function remove(db: Queryable, id: number): Promise<boolean> {
+  const { rowCount } = await db.query("delete from claims where id = $1", [id]);
+  return (rowCount ?? 0) > 0;
+}

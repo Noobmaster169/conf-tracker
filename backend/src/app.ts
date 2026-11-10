@@ -12,6 +12,7 @@ import { callsRouter } from "./routes/calls.routes";
 import { claimSearchRouter } from "./routes/claim-search.routes";
 import { claimsRouter } from "./routes/claims.routes";
 import { conferenceRouter } from "./routes/conference.routes";
+import { correctionsRouter } from "./routes/corrections.routes";
 import { eventsRouter } from "./routes/events.routes";
 import { sessionsRouter } from "./routes/sessions.routes";
 import { speakersRouter } from "./routes/speakers.routes";
@@ -53,6 +54,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/claims", claimSearchRouter(deps));
   app.use(conferenceRouter(deps));
   app.use(adminRouter(deps));
+  app.use(correctionsRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.

@@ -103,3 +103,26 @@ export async function setPerson(db: Queryable, sessionId: string, speakerId: str
   );
   return rows[0] ? toSpeaker(rows[0]) : null;
 }
+
+// A name given by hand outranks anything the model can propose: setName only replaces a weaker one.
+const BY_HAND = 1;
+
+/** Says by hand whose voice a label is. The person's spelling becomes the name, and no later proposal can replace it. Null when the label is gone. */
+export async function assign(db: Queryable, sessionId: string, speakerId: string, person: { id: number; name: string }, role: string | null): Promise<Speaker | null> {
+  const { rows } = await db.query<Row>(
+    `update speakers set person_id = $3, name = $4, role = coalesce($5, role), name_confidence = $6, name_quote = null, name_call_id = null
+     where session_id = $1 and speaker_id = $2 returning ${COLUMNS}`,
+    [sessionId, speakerId, person.id, person.name, role, BY_HAND],
+  );
+  return rows[0] ? toSpeaker(rows[0]) : null;
+}
+
+/** Takes a wrong name off a label. On a video still running the namer may name it again. Null when the label is gone. */
+export async function clearName(db: Queryable, sessionId: string, speakerId: string): Promise<Speaker | null> {
+  const { rows } = await db.query<Row>(
+    `update speakers set person_id = null, name = null, role = null, name_confidence = null, name_quote = null, name_call_id = null
+     where session_id = $1 and speaker_id = $2 returning ${COLUMNS}`,
+    [sessionId, speakerId],
+  );
+  return rows[0] ? toSpeaker(rows[0]) : null;
+}

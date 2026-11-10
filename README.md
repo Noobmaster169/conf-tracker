@@ -23,6 +23,21 @@ timeline covers it; and a session that leaves the stage gets its summary.
 In the code a scheduled session is a `talk` and a video is a `session` (the table yt-stream started with), so the two
 never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize}`. The summary prompt is yt-engine's, adapted for a conference session.
 
+## Putting data right through the API
+
+Everything stored can be read and corrected with the bearer key, so nothing needs the database or the box
+(`backend/src/routes/corrections.routes.ts`, next to the admin area's routes for stages, schedules and people). Every
+delete is for good.
+
+| Call | What it does |
+| --- | --- |
+| `PUT /sessions/:id/speakers/:sid` | Says who a voice is. Body is exactly one of `{ "name": "Jane Doe", "org": "...", "title": "..." }` (the person is found or made), `{ "person_id": 12 }`, `{ "name": null }` (takes the name off) or `{ "merge_into": "S4" }` (the voice is really that one). Every claim and line of the voice follows. A name given this way is never replaced by the namer. |
+| `PATCH /claims/:id` | Changes any of `claim`, `kind`, `importance`, `topics`, `polarity`, `speaker_id` (null for no speaker). The quote and its time stay. |
+| `DELETE /claims/:id` | Removes a claim. |
+| `PATCH /sessions/:id` | `{ "title": "..." }`, the name on the video's card. |
+| `DELETE /sessions/:id` | Removes a video with its transcript, voices, claims, timeline, summaries and model calls. Refused (409) while it runs or has replays. The recording kept by the speech service stays on the box. |
+| `DELETE /stages/:id` | Removes a stage and its schedule. Refused (400) while a video is on it or still holds a stretch of its timeline; hide it instead (`PUT /stages/:id`). People stay. |
+
 Started from yt-stream at `bdb3240` (`/root/ai/fiber/yt-stream`).
 
 Three packages, run from inside each. Never run commands at the root.

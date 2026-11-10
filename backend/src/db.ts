@@ -48,3 +48,11 @@ export async function withTx<T>(db: Pool, fn: (tx: PoolClient) => Promise<T>): P
     client.release();
   }
 }
+
+/**
+ * Runs `fn` as one transaction: its own on the pool, or the caller's when `db` is already a transaction's client (as it is
+ * in tests). For a write that spans several tables and must not stop half way.
+ */
+export async function atomic<T>(db: Queryable, fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  return db instanceof Pool ? withTx(db, fn) : fn(db);
+}

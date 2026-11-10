@@ -316,6 +316,39 @@ export type CreateSessionBody = z.infer<typeof CreateSessionBody>;
 export const ReplayBody = z.object({ config: SessionConfig.optional(), speed: z.number().nonnegative().optional() });
 export type ReplayBody = z.infer<typeof ReplayBody>;
 
+// PATCH /claims/:id: a correction by hand. Only the fields sent change; `speaker_id` null leaves the claim with no speaker.
+export const ClaimPatch = z
+  .object({
+    claim: z.string().trim().min(1).max(600),
+    kind: ClaimKind,
+    importance: z.number().int().min(1).max(5),
+    topics: z.array(z.string().trim().min(1).max(60)).max(8),
+    polarity: Polarity,
+    speaker_id: z.string().min(1).nullable(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: "nothing to change" });
+export type ClaimPatch = z.infer<typeof ClaimPatch>;
+
+// PUT /sessions/:id/speakers/:sid: who a voice is, said by hand. Exactly one of: a known person, a name (the person is
+// found or made), null to take the name away, or another voice of the video this one really is.
+export const SpeakerCorrection = z
+  .object({
+    person_id: z.number().int().positive().optional(),
+    name: z.string().trim().min(1).max(200).nullable().optional(),
+    org: z.string().trim().max(200).nullish(),
+    title: z.string().trim().max(200).nullish(),
+    merge_into: z.string().min(1).optional(),
+  })
+  .refine((body) => [body.person_id !== undefined, body.name !== undefined, body.merge_into !== undefined].filter(Boolean).length === 1, {
+    message: "send exactly one of person_id, name or merge_into",
+  });
+export type SpeakerCorrection = z.infer<typeof SpeakerCorrection>;
+
+// PATCH /sessions/:id: what a video is called on its card.
+export const SessionPatch = z.object({ title: z.string().trim().min(1).max(300).nullable() });
+export type SessionPatch = z.infer<typeof SessionPatch>;
+
 export * from "./contracts-conference";
 
 export const Snapshot = z.object({
