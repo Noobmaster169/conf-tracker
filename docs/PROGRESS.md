@@ -40,8 +40,6 @@ New:
 
 - Speech's `HlsSource` reads a past video's URL as fast as ffmpeg delivers, and the resolved URL can
   expire on a 6 to 9 hour video. Phase 4 downloads the audio first.
-- The frontend build fetches JetBrains Mono from Google Fonts at build time; a flaky network fails
-  the build. Self-host it with `next/font/local` if that recurs on the box.
 
 From the phase 0 review (deferred, not fixed):
 
