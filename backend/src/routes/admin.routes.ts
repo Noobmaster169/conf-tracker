@@ -1,13 +1,14 @@
 import { Router, type Response } from "express";
 import type { z } from "zod";
 
-import { ImportBody, PersonBody, StageBody, TalkBody } from "../contracts";
+import { ImportBody, PersonBody, PhotoBody, StageBody, TalkBody } from "../contracts";
 import type { StageWithTalks } from "../contracts-views";
 import type { Queryable } from "../db";
 import type { Summarize } from "../ingest/summarizer";
 import { formatSchedule, parseSchedule } from "../pipeline/schedule-text";
 import * as cards from "../repositories/cards";
 import * as people from "../repositories/people";
+import * as photos from "../repositories/photos";
 import * as sessions from "../repositories/sessions";
 import * as stages from "../repositories/stages";
 import * as talks from "../repositories/talks";
@@ -164,6 +165,18 @@ export function adminRouter({ db, summarize }: AdminDeps): Router {
       const input = body(PersonBody, req.body, res);
       if (!input) return;
       const person = await people.update(db, Number(req.params.id) || 0, input);
+      if (!person) return notFound(res, "person");
+      res.json(person);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/people/:id/photo", async (req, res, next) => {
+    try {
+      const input = body(PhotoBody, req.body, res);
+      if (!input) return;
+      const person = await photos.put(db, Number(req.params.id) || 0, { content_type: input.content_type, bytes: Buffer.from(input.data, "base64") });
       if (!person) return notFound(res, "person");
       res.json(person);
     } catch (error) {

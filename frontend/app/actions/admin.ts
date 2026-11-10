@@ -93,6 +93,6 @@ export async function setNowAction(form: FormData): Promise<void> {
 
 export async function updatePersonAction(form: FormData): Promise<void> {
   await run(form, "/admin/speakers", "Speaker saved", async () => {
-    await api.updatePerson(Number(text(form, "id")), { name: text(form, "name"), org: orNull(form, "org"), title: orNull(form, "title"), photo_url: orNull(form, "photo_url") });
+    await api.updatePerson(Number(text(form, "id")), { name: text(form, "name"), org: orNull(form, "org"), title: orNull(form, "title"), photo_url: orNull(form, "photo_url") ?? orNull(form, "photo_stored") });
   });
 }

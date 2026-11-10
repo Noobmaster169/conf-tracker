@@ -19,8 +19,11 @@ and parts of 3 forward, and added per-session summaries, which the design had li
 - Removed from the frontend: the claims explorer, compare, replay panel, audit drawer, speaker and topic panels and the
   status bar. Their backend routes (`/claims`, `/calls`, replay, topics) are still there.
 - Not built: alerts and browser notifications, alert dedupe, re-extraction after a tracker switch, the drift hint from
-  wall-clock time, entities and `first_party`, the evaluation view, a separate admin secret, photo upload (a photo is a
-  link the admin pastes).
+  wall-clock time, entities and `first_party`, the evaluation view, a separate admin secret, a photo upload field in the admin
+  form (a photo is a link the admin pastes, or is sent to `PUT /people/:id/photo`).
+- Speaker photos can be stored: `person_photos` (migration 007) keeps the bytes, `PUT /people/:id/photo` takes a base64
+  JSON body and points `people.photo_url` at `/people/:id/photo?v=...`, and the frontend reads it through
+  `/api/photo/[id]` so the backend key stays server-side. Built because the conference site's image links expire.
 
 ## Phases
 

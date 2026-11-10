@@ -104,8 +104,14 @@ export const StageBody = z.object({
 });
 export type StageBody = z.infer<typeof StageBody>;
 
-export const PersonBody = z.object({ name: text(200).min(1), org: optionalText(200), title: optionalText(200), photo_url: z.url().max(2000).nullish().transform((v) => v ?? null) });
+// A photo is a link the admin found, or the path of one stored here (PUT /people/:id/photo).
+const photoUrl = z.union([z.url().max(2000), z.string().regex(/^\/people\/\d+\/photo(\?v=\d+)?$/)]);
+export const PersonBody = z.object({ name: text(200).min(1), org: optionalText(200), title: optionalText(200), photo_url: photoUrl.nullish().transform((v) => v ?? null) });
 export type PersonBody = z.infer<typeof PersonBody>;
+
+// PUT /people/:id/photo: the image itself, base64, so it travels as JSON like every other body. About 700 KB at most.
+export const PhotoBody = z.object({ content_type: z.enum(["image/jpeg", "image/png", "image/webp"]), data: z.base64().min(1).max(950_000) });
+export type PhotoBody = z.infer<typeof PhotoBody>;
 
 export const TalkSpeakerBody = z.object({ name: text(200).min(1), org: optionalText(200), title: optionalText(200), role: TalkRole.default("speaker") });
 export type TalkSpeakerBody = z.infer<typeof TalkSpeakerBody>;

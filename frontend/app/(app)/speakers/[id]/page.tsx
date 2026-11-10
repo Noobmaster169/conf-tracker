@@ -7,7 +7,7 @@ import { ClaimCard } from "@/components/ui/claim-card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TalkRow } from "@/components/ui/talk-row";
 import { getPerson } from "@/lib/api-client";
-import { plural, titleAndOrg } from "@/lib/format";
+import { titleAndOrg } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +28,6 @@ export default async function SpeakerPage({ params }: PageProps<"/speakers/[id]"
         <div className="min-w-0">
           <h1 className="text-[32px] font-bold leading-tight tracking-tight">{person.name}</h1>
           {titleAndOrg(person) && <p className="text-[17px] text-ink-soft">{titleAndOrg(person)}</p>}
-          <p className="mt-1 text-[13px] text-ink-soft">
-            {plural(detail.claim_count, "claim")}
-            {talks.length > 0 && `, ${plural(talks.length, "session")}`}
-          </p>
         </div>
       </header>
 

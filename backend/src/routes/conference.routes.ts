@@ -4,6 +4,7 @@ import { FeedQuery, type PersonDetail, type TalkDetail } from "../contracts-view
 import type { Queryable } from "../db";
 import * as cards from "../repositories/cards";
 import * as feed from "../repositories/feed";
+import * as photos from "../repositories/photos";
 import * as summaries from "../repositories/summaries";
 
 // A person's or a talk's page shows its claims in one go; more than this is paged through GET /feed.
@@ -37,6 +38,20 @@ export function conferenceRouter({ db }: { db: Queryable }): Router {
   router.get("/people", async (_req, res, next) => {
     try {
       res.json(await cards.peopleCards(db));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/people/:id/photo", async (req, res, next) => {
+    try {
+      const photo = await photos.get(db, Number(req.params.id) || 0);
+      if (!photo) {
+        res.status(404).json({ error: "photo not found" });
+        return;
+      }
+      // The path carries a version that changes with every upload, so this answer never goes stale.
+      res.set("cache-control", "private, max-age=31536000, immutable").type(photo.content_type).send(photo.bytes);
     } catch (error) {
       next(error);
     }

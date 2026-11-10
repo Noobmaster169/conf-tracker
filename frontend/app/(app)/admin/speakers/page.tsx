@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Empty, Page, PageHeader } from "@/components/ui/bits";
 import { listPeople } from "@/lib/api-client";
 import { titleAndOrg } from "@/lib/format";
+import { isStoredPhoto } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +40,10 @@ export default async function AdminSpeakersPage({ searchParams }: PageProps<"/ad
                 <Field label="Title">
                   <input name="title" defaultValue={person.title ?? ""} className="field" />
                 </Field>
-                <Field label="Photo link">
-                  <input name="photo_url" type="url" defaultValue={person.photo_url ?? ""} placeholder="https://..." className="field" />
+                <Field label={isStoredPhoto(person.photo_url) ? "Photo link (a photo is stored; paste a link to replace it)" : "Photo link"}>
+                  <input name="photo_url" type="url" defaultValue={isStoredPhoto(person.photo_url) ? "" : (person.photo_url ?? "")} placeholder="https://..." className="field" />
                 </Field>
+                {isStoredPhoto(person.photo_url) && <input type="hidden" name="photo_stored" value={person.photo_url ?? ""} />}
                 <div className="sm:col-span-2">
                   <SubmitButton working="Saving">Save speaker</SubmitButton>
                 </div>
