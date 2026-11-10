@@ -23,3 +23,9 @@ export function speakerLabeller(speakers: Speaker[]): (id: string | null) => Spe
 export function mergedFrom(speakers: Speaker[], id: string): string[] {
   return speakers.filter((s) => s.merged_into === id).map((s) => s.speaker_id);
 }
+
+/** What a voice is called before anyone has named it: "Speaker 3" for S3. */
+export function voiceName(id: string | null): string {
+  const n = id ? /^S(\d+)$/.exec(id)?.[1] : undefined;
+  return n ? `Speaker ${n}` : "Unidentified speaker";
+}

@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 
+// Self-hosted from the package, so the build fetches nothing (SIL OFL 1.1).
+import "@fontsource-variable/schibsted-grotesk";
 import "./globals.css";
 
-// Self-hosted, so the build makes no network call: next/font/google's build-time fetch failed on Vercel.
-// The latin subset of JetBrains Mono's variable font (SIL OFL 1.1), as Google Fonts serves it.
-const jetbrains = localFont({ src: "./fonts/jetbrains-mono-latin.woff2", variable: "--font-jetbrains", weight: "100 800", display: "swap" });
-
-export const metadata: Metadata = { title: "conf-tracker", description: "Live conference claim tracker." };
+export const metadata: Metadata = { title: "Conference Tracker", description: "What is being said on stage, as it is said." };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={jetbrains.variable}>
-      <body className="min-h-full font-mono text-sm antialiased">{children}</body>
+    <html lang="en">
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }

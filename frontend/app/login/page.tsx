@@ -4,25 +4,17 @@ import { safeNext } from "@/lib/access";
 export default async function Login({ searchParams }: PageProps<"/login">) {
   const { error, next } = await searchParams;
   return (
-    <main className="mx-auto max-w-sm p-6">
-      <h1 className="mb-6 text-lg text-accent">conf-tracker</h1>
-      <form action={unlock} className="mb-2 flex gap-2">
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
+      <h1 className="text-[28px] font-bold tracking-tight">Conference Tracker</h1>
+      <p className="mb-6 mt-1 text-ink-soft">Enter the password to continue.</p>
+      <form action={unlock} className="flex gap-2">
         <input type="hidden" name="next" value={safeNext(next)} />
-        <input
-          name="password"
-          type="password"
-          required
-          autoFocus
-          autoComplete="current-password"
-          aria-label="Password"
-          placeholder="Password"
-          className="flex-1 rounded border border-line bg-panel px-3 py-2 text-ink placeholder:text-ink-faint"
-        />
-        <button type="submit" className="rounded bg-accent px-4 py-2 text-bg">
+        <input name="password" type="password" required autoFocus autoComplete="current-password" aria-label="Password" placeholder="Password" className="field" />
+        <button type="submit" className="btn">
           Enter
         </button>
       </form>
-      {typeof error === "string" && <p className="text-bad">{error}</p>}
+      {typeof error === "string" && <p role="alert" className="mt-3 font-medium text-live">{error}</p>}
     </main>
   );
 }

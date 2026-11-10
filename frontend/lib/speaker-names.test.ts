@@ -5,7 +5,7 @@ import { mergedFrom, speakerLabeller } from "./speaker-names";
 
 const speaker = (id: string, extra: Partial<Speaker> = {}): Speaker => ({
   speaker_id: id, first_seen_t: 0, last_seen_t: 0, talk_s: 0, merged_into: null,
-  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, ...extra,
+  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, person_id: null, ...extra,
 });
 
 test("a claim by a merged label shows the survivor's name; an unnamed or unlabelled one shows none", () => {

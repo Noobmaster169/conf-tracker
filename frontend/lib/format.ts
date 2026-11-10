@@ -8,14 +8,51 @@ export function formatT(seconds: number): string {
   return h > 0 ? `${h}:${mmss}` : mmss;
 }
 
-/** Local wall-clock time of a stream instant, from the session's start. Null before the session started. */
-export function wallTime(startedAt: string | null, t: number): string | null {
-  if (!startedAt) return null;
-  return new Date(new Date(startedAt).getTime() + t * 1000).toLocaleTimeString([], { hour12: false });
+/** How long something ran, in words a card can carry: "42 min", "3 h 05 min". */
+export function formatDuration(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) return "under a minute";
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
 }
 
-/** A hub id like pyannote/speaker-diarization-3.1 reads as its last part in a dense bar. Null when absent. */
-export function shortModel(name: string | undefined): string | null {
-  if (!name) return null;
-  return name.slice(name.lastIndexOf("/") + 1) || name;
+/** A schedule's day ("2026-11-10") as "Tue, 10 Nov 2026". Built from the parts, so no time zone can move it. */
+export function formatDay(day: string | null): string | null {
+  const match = day ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(day) : null;
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** A talk's planned time as printed: "10:00 to 10:30", "10:00", or nothing. */
+export function plannedTime(startsAt: string | null, endsAt: string | null): string | null {
+  if (!startsAt) return null;
+  return endsAt ? `${startsAt} to ${endsAt}` : startsAt;
+}
+
+/** "Co-Founder, Solana Labs" from whichever of the two is known. */
+export function titleAndOrg(person: { title: string | null; org: string | null }): string | null {
+  return [person.title, person.org].filter(Boolean).join(", ") || null;
+}
+
+/** The still YouTube keeps for every video. It is letterboxed 4:3, so it is shown cropped to 16:9. */
+export function thumbnailUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+/** One or two initials for a face with no photo. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words.length > 1 ? (words.at(-1)?.[0] ?? "") : "")).toUpperCase() || "?";
+}
+
+/** A steady hue per name, so a person without a photo keeps one colour everywhere. */
+export function nameHue(name: string): number {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return hash;
+}
+
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
 }

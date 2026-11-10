@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatT, shortModel, wallTime } from "./format";
+import { formatDay, formatDuration, formatT, initials, plannedTime, titleAndOrg } from "./format";
 
 test.each([
   [0, "00:00"],
@@ -13,16 +13,20 @@ test.each([
   expect(formatT(seconds)).toBe(expected);
 });
 
-test("wallTime adds stream seconds to the start, or is null without one", () => {
-  expect(wallTime(null, 10)).toBeNull();
-  const iso = wallTime("2026-09-23T10:00:00.000Z", 90.4);
-  expect(iso).toBe(new Date("2026-09-23T10:01:30.400Z").toLocaleTimeString([], { hour12: false }));
+test("a duration reads in minutes, then hours and minutes", () => {
+  expect([formatDuration(20), formatDuration(42 * 60), formatDuration(3 * 3600 + 5 * 60)]).toEqual(["under a minute", "42 min", "3 h 05 min"]);
 });
 
-test("shortModel keeps the text after the last slash", () => {
-  expect(shortModel("pyannote/speaker-diarization-3.1")).toBe("speaker-diarization-3.1");
-  expect(shortModel("plain")).toBe("plain");
-  expect(shortModel("trailing/")).toBe("trailing/");
-  expect(shortModel(undefined)).toBeNull();
-  expect(shortModel("")).toBeNull();
+test("a schedule day is written out without a time zone moving it; anything else is nothing", () => {
+  expect(formatDay("2026-11-10")).toBe("Tue, 10 Nov 2026");
+  expect(formatDay(null)).toBeNull();
+  expect(formatDay("tomorrow")).toBeNull();
+});
+
+test("planned times, titles and initials are built from whatever is known", () => {
+  expect([plannedTime("10:00", "10:30"), plannedTime("10:00", null), plannedTime(null, "10:30")]).toEqual(["10:00 to 10:30", "10:00", null]);
+  expect(titleAndOrg({ title: "Co-Founder", org: "Solana Labs" })).toBe("Co-Founder, Solana Labs");
+  expect(titleAndOrg({ title: null, org: "Solana Labs" })).toBe("Solana Labs");
+  expect(titleAndOrg({ title: null, org: null })).toBeNull();
+  expect([initials("Anatoly Yakovenko"), initials("Meow"), initials("  ")]).toEqual(["AY", "M", "?"]);
 });

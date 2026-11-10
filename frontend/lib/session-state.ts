@@ -1,8 +1,9 @@
+import type { Person, Span, Stage, Talk } from "./api/conference";
 import type { CallSummary, Claim, Health, LiveEvent, Segment, Session, Snapshot, Speaker, TurnsUpdate } from "./api/schemas";
 
 export type Connection = "connecting" | "open" | "closed";
 
-const MAX_CLAIMS = 500;
+const MAX_CLAIMS = 5000;
 const MAX_CALLS = 10;
 
 export interface SessionState {
@@ -17,6 +18,10 @@ export interface SessionState {
   arrivals: Record<number, number>;
   revisions: Record<number, number>;
   lastTurns: TurnsUpdate | null;
+  stage: Stage | null;
+  talks: Talk[];
+  spans: Span[];
+  people: Person[];
   seq: number;
   connection: Connection;
 }
@@ -33,6 +38,10 @@ export function initialState(snapshot: Snapshot): SessionState {
     arrivals: {},
     revisions: {},
     lastTurns: null,
+    stage: snapshot.stage,
+    talks: snapshot.talks,
+    spans: snapshot.spans,
+    people: snapshot.people,
     seq: snapshot.seq,
     connection: "connecting",
   };
@@ -92,6 +101,10 @@ export function applyEvent(state: SessionState, event: LiveEvent, at = 0): Sessi
       const added = event.data.filter((c) => !known.has(c.id));
       return { ...state, seq, claims: [...state.claims, ...added].slice(-MAX_CLAIMS) };
     }
+    case "span":
+      return { ...state, seq, spans: [...state.spans.filter((s) => s.id !== event.data.id), event.data].sort((a, b) => a.t0 - b.t0 || a.id - b.id) };
+    case "person":
+      return { ...state, seq, people: [...state.people.filter((p) => p.id !== event.data.id), event.data] };
     case "call": {
       // A replayed call is in the snapshot's total already; only a call newer than the state adds to it.
       const known = state.calls.some((c) => c.id === event.data.id);
@@ -124,21 +137,16 @@ export function speakerResolver(speakers: Speaker[]): (id: string | null) => str
   return (id) => (id === null ? null : (resolved.get(id) ?? id));
 }
 
-export function speakersHeading(speakers: Speaker[]): string {
-  if (speakers.length === 0) return "speakers";
-  const merged = speakers.filter((s) => s.merged_into !== null).length;
-  const distinct = speakers.length - merged;
-  return merged ? `speakers ${distinct} (+${merged} merged)` : `speakers ${distinct}`;
+/** What is on stage now: the span still running and, when it is a talk, the talk. Null before the tracker has placed anything. */
+export function nowOnStage(state: Pick<SessionState, "spans" | "talks">): { span: Span; talk: Talk | null } | null {
+  const span = state.spans.findLast((s) => s.t1 === null);
+  if (!span) return null;
+  return { span, talk: state.talks.find((t) => t.id === span.talk_id) ?? null };
 }
 
-export function activeSpeakers(state: SessionState, withinS = 10): Set<string> {
-  const active = new Set<string>();
-  const last = state.lastTurns;
-  if (!last) return active;
-  for (const turn of last.turns) {
-    if (turn.t1 < last.window.t1 - withinS) continue;
-    const id = resolveSpeaker(state.speakers, turn.speaker_id);
-    if (id !== null) active.add(id);
-  }
-  return active;
+/** The talk that was on stage at stream time t. */
+export function talkAt(state: Pick<SessionState, "spans" | "talks">, t: number | null): Talk | null {
+  if (t === null) return null;
+  const span = state.spans.findLast((s) => s.state === "talk" && t >= s.t0 && (s.t1 === null || t < s.t1));
+  return state.talks.find((talk) => talk.id === span?.talk_id) ?? null;
 }

@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=.env --import tsx src/index.ts",
     "test": "vitest run",
     "type-check": "tsc --noEmit",
-    "db:migrate": "node --env-file-if-exists=.env db/migrate.mjs"
+    "db:migrate": "node --env-file-if-exists=.env db/migrate.mjs",
+    "simulate": "node --env-file-if-exists=.env --import tsx scripts/simulate.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

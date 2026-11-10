@@ -4,6 +4,25 @@ Live claim extraction for crypto conference stages: each stage's YouTube livestr
 recording of one) beside its transcript, the session on stage, the claims made and an alert
 when something important is announced. Design: `docs/superpowers/specs/2026-11-09-conf-tracker-design.md`.
 
+## The app
+
+| Page | What it is |
+| --- | --- |
+| Videos (`/`) | Every stream tracked, as cards. A video's page has the player, the session on stage, the live transcript and its claims. |
+| Monitor (`/monitor`) | The newest claims from every stage and who made them. Refreshes itself. |
+| Sessions (`/sessions`) | Each stage's schedule. A session that has finished opens to a written summary and its claims. |
+| Speakers (`/speakers`) | Everyone heard or scheduled. A speaker's page lists everything they have claimed. |
+| Admin (`/admin`) | Stages and their schedules, starting a video on a stage, correcting what is on stage, speaker profiles. |
+
+How it fits together: the admin creates a **stage** (one stage of one conference on one day) and pastes its
+schedule. A **video** is bound to a stage. While it runs, a tracker reads the last minutes of transcript against the
+schedule every minute and keeps a timeline of which session is on stage; extraction and speaker naming are told what
+the schedule says; a named voice is linked to a **person**; a claim belongs to the session whose stretch of the
+timeline covers it; and a session that leaves the stage gets its summary.
+
+In the code a scheduled session is a `talk` and a video is a `session` (the table yt-stream started with), so the two
+never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize}`.
+
 Started from yt-stream at `bdb3240` (`/root/ai/fiber/yt-stream`).
 
 Three packages, run from inside each. Never run commands at the root.
@@ -35,6 +54,11 @@ cd frontend && pnpm install && pnpm dev
 
 Local compose runs Postgres on 5435 and the llm-proxy on 4003; set `CLAUDE_CODE_OAUTH_TOKEN` in
 `backend/.env` (`claude setup-token`) or every extraction call is stored as failed.
+
+No speech service and no model on a dev machine? `cd backend && pnpm simulate --scripted` plays a made-up two-session
+conference (`scripts/demo-stage.json`) through the real tracker, namer, extractor and summarizer with answers written
+in the file, so every page has something to show. `pnpm simulate` without the flag does the same against the real
+llm-proxy, which is the quickest way to judge the prompts.
 
 Tests: `pnpm test` in `backend/` (needs the compose Postgres; database `conf_tracker_test`),
 `pnpm test` in `frontend/`, `.venv/bin/pytest -q` in `proxy/`, `bash deploy/test-auto-deploy.sh`.

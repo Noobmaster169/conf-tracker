@@ -7,7 +7,7 @@ const w = (text: string, t0: number, speaker_id: string | null) => ({ w: text, t
 const segment = (id: number, words: Segment["words"], text = words.map((x) => x.w).join(" ")): Segment => ({
   id, session_id: "s", t0: words[0]?.t0 ?? 0, t1: 99, text, words,
 });
-const merged: Speaker = { speaker_id: "S2", first_seen_t: 0, last_seen_t: 0, talk_s: 0, merged_into: "S1", name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null };
+const merged: Speaker = { speaker_id: "S2", first_seen_t: 0, last_seen_t: 0, talk_s: 0, merged_into: "S1", name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, person_id: null };
 
 test("a segment splits into runs of the same resolved speaker", () => {
   const lines = toLines([segment(1, [w("a", 0, "S1"), w("b", 1, "S2"), w("c", 2, "S3"), w("d", 3, null)])], [merged], { 1: 5 });

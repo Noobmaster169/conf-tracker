@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { Person, Span, Stage, Talk } from "./conference";
+
 /** Mirrored by hand from backend/src/contracts.ts. Change both or neither. */
 export const Word = z.object({ w: z.string(), t0: z.number(), t1: z.number(), p: z.number(), speaker_id: z.string().nullable() });
 export type Word = z.infer<typeof Word>;
@@ -21,6 +23,9 @@ export const Session = z.object({
   models: z.record(z.string(), z.string()),
   error: z.string().nullable(),
   created_at: z.string(),
+  // Older backends omit both: a video with no stage and no stored title.
+  stage_id: z.string().nullable().default(null),
+  title: z.string().nullable().default(null),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -40,16 +45,6 @@ export type Health = z.infer<typeof Health>;
 export const Turn = z.object({ t0: z.number(), t1: z.number(), speaker_id: z.string() });
 export type Turn = z.infer<typeof Turn>;
 
-// One local pyannote speaker of a window and how it resolved against the registry.
-export const Match = z.object({
-  local: z.string(),
-  speech_s: z.number(),
-  speaker_id: z.string().nullable(),
-  scores: z.record(z.string(), z.number()),
-  new: z.boolean(),
-});
-export type Match = z.infer<typeof Match>;
-
 export const DiarWindow = z.object({ t0: z.number(), t1: z.number() });
 export type DiarWindow = z.infer<typeof DiarWindow>;
 
@@ -65,33 +60,9 @@ export const Speaker = z.object({
   name_confidence: z.number().nullable().default(null),
   name_quote: z.string().nullable().default(null),
   name_call_id: z.number().nullable().default(null),
+  person_id: z.number().nullable().default(null),
 });
 export type Speaker = z.infer<typeof Speaker>;
-
-export const ProposalStatus = z.enum(["accepted", "rejected"]);
-export type ProposalStatus = z.infer<typeof ProposalStatus>;
-
-export const NameProposal = z.object({
-  id: z.number(),
-  session_id: z.string(),
-  call_id: z.number(),
-  speaker_id: z.string(),
-  name: z.string(),
-  role: z.string().nullable(),
-  confidence: z.number(),
-  quote: z.string(),
-  quote_verified: z.boolean(),
-  status: ProposalStatus,
-  reason: z.string().nullable(),
-  created_at: z.string(),
-});
-export type NameProposal = z.infer<typeof NameProposal>;
-
-export const WindowRecord = z.object({ id: z.number(), t0: z.number(), t1: z.number(), gpu_ms: z.number(), matches: z.array(Match) });
-export type WindowRecord = z.infer<typeof WindowRecord>;
-
-export const SpeakerDetail = z.object({ speaker: Speaker, windows: z.array(WindowRecord), proposals: z.array(NameProposal).default([]) });
-export type SpeakerDetail = z.infer<typeof SpeakerDetail>;
 
 export const TurnsUpdate = z.object({ window: DiarWindow, turns: z.array(Turn) });
 export type TurnsUpdate = z.infer<typeof TurnsUpdate>;
@@ -101,6 +72,9 @@ export type Polarity = z.infer<typeof Polarity>;
 
 export const ClaimStatus = z.enum(["ok", "unverified", "duplicate"]);
 export type ClaimStatus = z.infer<typeof ClaimStatus>;
+
+export const ClaimKind = z.enum(["announcement", "metric", "roadmap", "opinion", "fact"]);
+export type ClaimKind = z.infer<typeof ClaimKind>;
 
 export const Claim = z.object({
   id: z.number(),
@@ -115,6 +89,8 @@ export const Claim = z.object({
   quote: z.string(),
   quote_verified: z.boolean(),
   status: ClaimStatus,
+  kind: ClaimKind.nullable().default(null),
+  importance: z.number().nullable().default(null),
   created_at: z.string(),
 });
 export type Claim = z.infer<typeof Claim>;
@@ -139,18 +115,6 @@ export const CallSummary = z.object({
 });
 export type CallSummary = z.infer<typeof CallSummary>;
 
-export const LlmCall = CallSummary.extend({ input: z.string(), output: z.string().nullable(), parsed: z.unknown() });
-export type LlmCall = z.infer<typeof LlmCall>;
-
-export const CallDetail = z.object({ call: LlmCall, claims: z.array(Claim), proposals: z.array(NameProposal).default([]) });
-export type CallDetail = z.infer<typeof CallDetail>;
-
-export const TopicCount = z.object({ topic: z.string(), count: z.number() });
-export type TopicCount = z.infer<typeof TopicCount>;
-
-export const Topics = z.object({ from: z.number(), to: z.number(), topics: z.array(TopicCount) });
-export type Topics = z.infer<typeof Topics>;
-
 export const Snapshot = z.object({
   session: Session,
   segments: z.array(Segment),
@@ -161,6 +125,10 @@ export const Snapshot = z.object({
   calls: z.array(CallSummary).default([]),
   cost_usd: z.number().default(0),
   seq: z.number(),
+  stage: Stage.nullable().default(null),
+  talks: z.array(Talk).default([]),
+  spans: z.array(Span).default([]),
+  people: z.array(Person).default([]),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 
@@ -174,5 +142,7 @@ export const LiveEvent = z.discriminatedUnion("type", [
   z.object({ seq: z.number(), type: z.literal("speaker"), data: Speaker }),
   z.object({ seq: z.number(), type: z.literal("call"), data: CallSummary }),
   z.object({ seq: z.number(), type: z.literal("claims.new"), data: z.array(Claim) }),
+  z.object({ seq: z.number(), type: z.literal("span"), data: Span }),
+  z.object({ seq: z.number(), type: z.literal("person"), data: Person }),
 ]);
 export type LiveEvent = z.infer<typeof LiveEvent>;

@@ -16,9 +16,11 @@ const session: Snapshot["session"] = {
   models: {},
   error: null,
   created_at: "2026-09-23T00:00:00.000Z",
+  stage_id: null,
+  title: null,
 };
 const seg = (id: number, t0: number, text = "x"): Segment => ({ id, session_id: "s", t0, t1: t0 + 1, text, words: [] });
-const snapshot: Snapshot = { session, segments: [seg(1, 0), seg(2, 5)], health: null, speakers: [], claims: [], calls: [], cost_usd: 0, seq: 2 };
+const snapshot: Snapshot = { session, segments: [seg(1, 0), seg(2, 5)], health: null, speakers: [], claims: [], calls: [], cost_usd: 0, seq: 2, stage: null, talks: [], spans: [], people: [] };
 
 test("initial state comes from the snapshot, connecting", () => {
   const state = initialState(snapshot);
@@ -54,11 +56,11 @@ test("a snapshot event replaces everything but the connection", () => {
 });
 
 import type { Speaker } from "./api/schemas";
-import { activeSpeakers, resolveSpeaker, speakerResolver, speakersHeading } from "./session-state";
+import { nowOnStage, resolveSpeaker, speakerResolver, talkAt } from "./session-state";
 
 const spk = (speaker_id: string, first_seen_t: number, merged_into: string | null = null): Speaker => ({
   speaker_id, first_seen_t, last_seen_t: first_seen_t, talk_s: 0, merged_into,
-  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null,
+  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, person_id: null,
 });
 
 test("speaker events upsert by id and keep first-seen order", () => {
@@ -113,33 +115,33 @@ test("resolveSpeaker follows merged_into", () => {
   expect(resolveSpeaker(speakers, "S9")).toBe("S9");
 });
 
-test("activeSpeakers are those with a turn in the last seconds of the latest window", () => {
-  let state = initialState({ ...snapshot, speakers: [spk("S1", 0), spk("S2", 0, "S1"), spk("S3", 0)] });
-  state = applyEvent(state, {
-    seq: 3,
-    type: "turns",
-    data: { window: { t0: 0, t1: 60 }, turns: [{ t0: 10, t1: 20, speaker_id: "S3" }, { t0: 52, t1: 58, speaker_id: "S2" }] },
-  });
-  expect([...activeSpeakers(state)]).toEqual(["S1"]);
-});
-
 test("speakerResolver resolves every id once, like resolveSpeaker", () => {
   const speakers = [spk("S1", 0), spk("S2", 1, "S1"), spk("S3", 2, "S2")];
   const resolve = speakerResolver(speakers);
   expect([resolve("S3"), resolve("S2"), resolve("S1"), resolve("S9"), resolve(null)]).toEqual(["S1", "S1", "S1", "S9", null]);
 });
 
-test("speakersHeading counts distinct speakers and notes merges", () => {
-  expect(speakersHeading([])).toBe("speakers");
-  expect(speakersHeading([spk("S1", 0), spk("S2", 1)])).toBe("speakers 2");
-  expect(speakersHeading([spk("S1", 0), spk("S2", 1, "S1"), spk("S3", 2)])).toBe("speakers 2 (+1 merged)");
+test("span events build the timeline: what is on stage now, and which session a moment belonged to", () => {
+  const talk = (id: number, title: string) => ({ id, stage_id: "g", title, description: "", kind: "talk" as const, starts_at: null, ends_at: null, position: id, speakers: [] });
+  const span = (id: number, talk_id: number | null, t0: number, t1: number | null) => ({ id, session_id: "s", talk_id, state: talk_id === null ? ("break" as const) : ("talk" as const), t0, t1, confidence: 0.9, source: "tracker" as const });
+  let state = initialState({ ...snapshot, talks: [talk(1, "Keynote"), talk(2, "Panel")] });
+  expect(nowOnStage(state)).toBeNull();
+  state = applyEvent(state, { seq: 3, type: "span", data: span(1, 1, 10, null) });
+  expect(nowOnStage(state)?.talk?.title).toBe("Keynote");
+  // The switch arrives as two events: the old span closed, the new one opened.
+  state = applyEvent(state, { seq: 4, type: "span", data: span(1, 1, 10, 400) });
+  state = applyEvent(state, { seq: 5, type: "span", data: span(2, null, 400, 500) });
+  state = applyEvent(state, { seq: 6, type: "span", data: span(3, 2, 500, null) });
+  expect(state.spans.map((s) => s.id)).toEqual([1, 2, 3]);
+  expect(nowOnStage(state)?.talk?.title).toBe("Panel");
+  expect([talkAt(state, 5), talkAt(state, 399)?.title, talkAt(state, 450), talkAt(state, 900)?.title, talkAt(state, null)]).toEqual([null, "Keynote", null, "Panel", null]);
 });
 
 import type { CallSummary, Claim } from "./api/schemas";
 
 const claimAt = (id: number, t0: number | null): Claim => ({
   id, session_id: "s", call_id: 1, speaker_id: t0 === null ? null : "S1", t0, t1: t0 === null ? null : t0 + 2, claim: `c${id}`, topics: [],
-  polarity: "none", quote: "q", quote_verified: t0 !== null, status: t0 === null ? "unverified" : "ok", created_at: "2026-09-28T00:00:00.000Z",
+  polarity: "none", quote: "q", quote_verified: t0 !== null, status: t0 === null ? "unverified" : "ok", kind: null, importance: null, created_at: "2026-09-28T00:00:00.000Z",
 });
 const callAt = (id: number, error: string | null = null): CallSummary => ({
   id, session_id: "s", step: "extract", prompt_version: "v1", model: "sonnet", window_t0: 0, window_t1: 30, attempt: 1,

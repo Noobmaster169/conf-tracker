@@ -1,0 +1,668 @@
+{
+  "note": "A made-up conference for local runs. Every person, company and figure here is fictional.",
+  "video_url": "https://www.youtube.com/watch?v=QB5BNdBFujE",
+  "video_title": "Meridian Summit 2026, Main stage (simulated)",
+  "stage": {
+    "conference": "Meridian Summit 2026",
+    "name": "Main stage",
+    "day": "2026-11-10",
+    "description": "A fictional annual conference of the Halcyon blockchain ecosystem: its core developers, the projects building on it, and the institutions adopting it."
+  },
+  "schedule": "10:00-10:20 | Halcyon: the next two years | Mira Voss, Halcyon Labs, Co-Founder; Dan Okafor, Meridian Summit (host) | keynote\n10:20-10:50 | Stablecoins after the yield era | Priya Raman, Tessel, CEO; Jonas Weller, Kestrel Bank, Head of Digital Assets; Elena Park, Fathom Research, Analyst (moderator) | panel\n10:50-11:05 | Coffee | | break\n11:05-11:30 | Writing a validator client from scratch | Tomas Ilves, Ironwood, CTO | fireside",
+  "lines": [
+    [
+      5,
+      "S1",
+      "Good morning everyone and welcome to day one of Meridian Summit. Please find your seats, we are about to get started."
+    ],
+    [
+      16,
+      "S1",
+      "A quick reminder that the wifi password is on the back of your badge, and coffee is served in the foyer at ten fifty."
+    ],
+    [
+      28,
+      "S1",
+      "To open the main stage, please welcome the co-founder of Halcyon Labs, Mira Voss."
+    ],
+    [
+      38,
+      "S2",
+      "Thank you Dan. Hello Meridian. It is good to be back in this room."
+    ],
+    [
+      47,
+      "S2",
+      "I want to use these twenty minutes to tell you where Halcyon is going over the next two years, and I am going to start with the thing most of you came to hear."
+    ],
+    [
+      61,
+      "S2",
+      "Today we are announcing that the Lattice upgrade goes live on mainnet on March the third. That date is locked."
+    ],
+    [
+      73,
+      "S2",
+      "Lattice replaces our execution scheduler, and on the public testnet over the last ninety days it has sustained eighty five thousand transactions per second with a median confirmation of four hundred milliseconds."
+    ],
+    [
+      90,
+      "S2",
+      "For comparison, mainnet today peaks at around eleven thousand. So this is close to an eight times improvement on the same hardware."
+    ],
+    [
+      103,
+      "S2",
+      "The second thing. Fees. After Lattice, the median fee for a simple transfer drops below a hundredth of a cent. We think that makes fees a rounding error for consumer applications."
+    ],
+    [
+      120,
+      "S2",
+      "Now some numbers on where the network is today. Halcyon passed four point two million daily active addresses in October, up from one point six million a year ago."
+    ],
+    [
+      136,
+      "S2",
+      "And developers. We counted three thousand one hundred monthly active developers on Halcyon last month, which is the highest it has ever been."
+    ],
+    [
+      150,
+      "S2",
+      "I also want to be honest about what went wrong. The outage in June lasted five hours and it was our fault. A bug in the gossip layer that our own test suite should have caught."
+    ],
+    [
+      166,
+      "S2",
+      "Since then we have funded two independent validator clients, because no network should depend on one codebase. Ironwood is the first, and Tomas will talk about it later this morning."
+    ],
+    [
+      182,
+      "S2",
+      "Our target is that by the end of next year no single client runs more than half of the stake."
+    ],
+    [
+      194,
+      "S2",
+      "One more announcement. Halcyon Labs is partnering with Kestrel Bank to settle Kestrel's tokenised deposits on Halcyon, starting with a pilot in the second quarter."
+    ],
+    [
+      210,
+      "S2",
+      "Kestrel is a regulated bank with forty billion dollars in deposits. This is not a marketing partnership. They are putting real balances on chain."
+    ],
+    [
+      224,
+      "S2",
+      "Let me say something about where I think this industry is. My view is that the scaling debate is over. Blockspace is going to be abundant on every serious chain within two years."
+    ],
+    [
+      240,
+      "S2",
+      "What will be scarce is distribution. The chains that win will be the ones wallets and banks already integrate, not the ones with the best benchmark."
+    ],
+    [
+      255,
+      "S2",
+      "And I think most layer twos that exist today will not exist in three years, because their only product was cheaper blockspace."
+    ],
+    [
+      269,
+      "S2",
+      "So that is the plan. Lattice on March the third. Fees near zero. Two more clients. And real banks on chain."
+    ],
+    [
+      282,
+      "S2",
+      "On the roadmap after that, we plan to ship native account abstraction in the second half of next year, so a user never has to see a seed phrase."
+    ],
+    [
+      297,
+      "S2",
+      "We are also committing fifty million dollars from the Halcyon ecosystem fund to teams building consumer payments. Applications open next week."
+    ],
+    [
+      312,
+      "S2",
+      "I will stop there. Thank you all for building on Halcyon. Enjoy the summit."
+    ],
+    [
+      322,
+      "S1",
+      "Mira Voss, everybody. Thank you Mira."
+    ],
+    [
+      330,
+      "S1",
+      "Next up on the main stage we have a panel, Stablecoins after the yield era. Please welcome Priya Raman of Tessel, Jonas Weller of Kestrel Bank, and your moderator Elena Park from Fathom Research."
+    ],
+    [
+      348,
+      "S3",
+      "Thanks Dan. I'm Elena Park, I cover stablecoins at Fathom Research. Let's get straight into it. Priya, Tessel issues the largest stablecoin on Halcyon. What changed this year?"
+    ],
+    [
+      364,
+      "S4",
+      "Thanks Elena. The big change is that the yield went away. When rates fell, the easy business of sitting on treasury bills and keeping the interest got a lot smaller."
+    ],
+    [
+      379,
+      "S4",
+      "Tessel's reserve income is down about forty percent year on year, even though our supply grew. Our circulating supply is nine billion dollars today, up from six billion in January."
+    ],
+    [
+      396,
+      "S4",
+      "So we have had to become a payments company. Sixty percent of our transfer volume now is merchant settlement and payroll, not trading."
+    ],
+    [
+      410,
+      "S3",
+      "Jonas, you are the bank on this stage. Why would a bank issue deposits on a public chain at all?"
+    ],
+    [
+      421,
+      "S5",
+      "It is a fair question, Elena. Honestly, two years ago we would not have. What changed is that our corporate clients started asking for settlement on weekends."
+    ],
+    [
+      436,
+      "S5",
+      "Kestrel will launch its tokenised deposit pilot in the second quarter with twelve corporate clients, and we expect to move about two billion dollars a month through it by the end of the year."
+    ],
+    [
+      453,
+      "S5",
+      "I should be clear that a tokenised deposit is not a stablecoin. It is a claim on the bank, it is insured, and it pays interest. I think that is what most businesses will actually want to hold."
+    ],
+    [
+      469,
+      "S4",
+      "I disagree with Jonas there. A deposit token only works between clients of the same bank. A stablecoin works between everyone. Open networks beat closed ones, they always have."
+    ],
+    [
+      484,
+      "S5",
+      "Perhaps. But I would say regulators will not let non-banks hold nine billion dollars of other people's money without bank-like rules for much longer."
+    ],
+    [
+      498,
+      "S3",
+      "Let's talk about that. Priya, do you expect to need a banking licence?"
+    ],
+    [
+      507,
+      "S4",
+      "We have applied for one. Tessel filed for a national trust charter in September, and we expect a decision in the first half of next year."
+    ],
+    [
+      521,
+      "S4",
+      "And we are going to start sharing reserve income with holders. From January, Tessel will pass through half of its reserve yield to wallets that hold more than thirty days."
+    ],
+    [
+      537,
+      "S3",
+      "That is news. Jonas, does that worry you?"
+    ],
+    [
+      544,
+      "S5",
+      "A little, yes. If stablecoins pay yield, they compete directly with deposits. My prediction is that within three years the difference between the two will be a legal detail the customer never sees."
+    ],
+    [
+      561,
+      "S3",
+      "Last question for both of you. One number that will surprise this room a year from now?"
+    ],
+    [
+      570,
+      "S4",
+      "Stablecoin supply on Halcyon passes fifty billion dollars. It is at fourteen billion today."
+    ],
+    [
+      580,
+      "S5",
+      "More than half of Kestrel's cross-border corporate payments will settle on chain."
+    ],
+    [
+      590,
+      "S3",
+      "Priya Raman, Jonas Weller, thank you both."
+    ],
+    [
+      598,
+      "S1",
+      "Thank you to our panel. We are going to take a short break now. Coffee is in the foyer, and we will be back on the main stage at five past eleven."
+    ],
+    [
+      612,
+      "S1",
+      "A reminder that the workshop rooms are on the second floor, and lunch vouchers are at the registration desk."
+    ]
+  ],
+  "scripted": {
+    "note": "Answers used only by `pnpm simulate --scripted`, when no model is reachable. Each is still checked against the transcript like a model's answer.",
+    "track": [
+      {
+        "from": 0,
+        "title": "Halcyon: the next two years",
+        "quote": "To open the main stage, please welcome the co-founder of Halcyon Labs, Mira Voss."
+      },
+      {
+        "from": 345,
+        "title": "Stablecoins after the yield era",
+        "quote": "Next up on the main stage we have a panel, Stablecoins after the yield era."
+      },
+      {
+        "from": 610,
+        "title": null,
+        "quote": "We are going to take a short break now."
+      }
+    ],
+    "names": [
+      {
+        "speaker_id": "S1",
+        "name": "Dan Okafor",
+        "role": "MC",
+        "confidence": 0.8,
+        "quote": "Thank you Dan."
+      },
+      {
+        "speaker_id": "S2",
+        "name": "Mira Voss",
+        "role": "Co-Founder, Halcyon Labs",
+        "confidence": 0.95,
+        "quote": "please welcome the co-founder of Halcyon Labs, Mira Voss."
+      },
+      {
+        "speaker_id": "S3",
+        "name": "Elena Park",
+        "role": "Analyst, Fathom Research",
+        "confidence": 0.95,
+        "quote": "I'm Elena Park, I cover stablecoins at Fathom Research."
+      },
+      {
+        "speaker_id": "S4",
+        "name": "Priya Raman",
+        "role": "CEO, Tessel",
+        "confidence": 0.85,
+        "quote": "Priya, Tessel issues the largest stablecoin on Halcyon."
+      },
+      {
+        "speaker_id": "S5",
+        "name": "Jonas Weller",
+        "role": "Head of Digital Assets, Kestrel Bank",
+        "confidence": 0.85,
+        "quote": "Jonas, you are the bank on this stage."
+      }
+    ],
+    "claims": [
+      {
+        "claim": "Halcyon's Lattice upgrade goes live on mainnet on March 3.",
+        "kind": "announcement",
+        "importance": 5,
+        "topics": [
+          "halcyon",
+          "lattice"
+        ],
+        "polarity": "bullish",
+        "quote": "Today we are announcing that the Lattice upgrade goes live on mainnet on March the third."
+      },
+      {
+        "claim": "Lattice sustained 85,000 transactions per second on Halcyon's public testnet over 90 days, with a 400 ms median confirmation.",
+        "kind": "metric",
+        "importance": 4,
+        "topics": [
+          "halcyon",
+          "lattice",
+          "throughput"
+        ],
+        "polarity": "bullish",
+        "quote": "it has sustained eighty five thousand transactions per second with a median confirmation of four hundred milliseconds."
+      },
+      {
+        "claim": "Halcyon mainnet currently peaks at around 11,000 transactions per second.",
+        "kind": "metric",
+        "importance": 2,
+        "topics": [
+          "halcyon",
+          "throughput"
+        ],
+        "polarity": "neutral",
+        "quote": "mainnet today peaks at around eleven thousand."
+      },
+      {
+        "claim": "After Lattice, the median fee for a simple transfer on Halcyon will drop below a hundredth of a cent.",
+        "kind": "roadmap",
+        "importance": 4,
+        "topics": [
+          "halcyon",
+          "fees"
+        ],
+        "polarity": "bullish",
+        "quote": "After Lattice, the median fee for a simple transfer drops below a hundredth of a cent."
+      },
+      {
+        "claim": "Halcyon passed 4.2 million daily active addresses in October, up from 1.6 million a year earlier.",
+        "kind": "metric",
+        "importance": 4,
+        "topics": [
+          "halcyon",
+          "adoption"
+        ],
+        "polarity": "bullish",
+        "quote": "Halcyon passed four point two million daily active addresses in October, up from one point six million a year ago."
+      },
+      {
+        "claim": "Halcyon had 3,100 monthly active developers last month, its highest ever.",
+        "kind": "metric",
+        "importance": 3,
+        "topics": [
+          "halcyon",
+          "developers"
+        ],
+        "polarity": "bullish",
+        "quote": "We counted three thousand one hundred monthly active developers on Halcyon last month"
+      },
+      {
+        "claim": "Halcyon's June outage lasted five hours and was caused by a bug in its gossip layer.",
+        "kind": "fact",
+        "importance": 3,
+        "topics": [
+          "halcyon",
+          "outage"
+        ],
+        "polarity": "bearish",
+        "quote": "The outage in June lasted five hours and it was our fault."
+      },
+      {
+        "claim": "Halcyon Labs has funded two independent validator clients, the first of which is Ironwood.",
+        "kind": "announcement",
+        "importance": 4,
+        "topics": [
+          "halcyon",
+          "ironwood",
+          "client diversity"
+        ],
+        "polarity": "bullish",
+        "quote": "Since then we have funded two independent validator clients"
+      },
+      {
+        "claim": "Halcyon targets no single validator client running more than half of the stake by the end of next year.",
+        "kind": "roadmap",
+        "importance": 3,
+        "topics": [
+          "halcyon",
+          "client diversity"
+        ],
+        "polarity": "neutral",
+        "quote": "by the end of next year no single client runs more than half of the stake."
+      },
+      {
+        "claim": "Halcyon Labs is partnering with Kestrel Bank to settle Kestrel's tokenised deposits on Halcyon, with a pilot starting in Q2.",
+        "kind": "announcement",
+        "importance": 5,
+        "topics": [
+          "halcyon",
+          "kestrel bank",
+          "tokenised deposits"
+        ],
+        "polarity": "bullish",
+        "quote": "Halcyon Labs is partnering with Kestrel Bank to settle Kestrel's tokenised deposits on Halcyon, starting with a pilot in the second quarter."
+      },
+      {
+        "claim": "Blockspace will be abundant on every serious chain within two years, making distribution the scarce resource.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "scaling",
+          "distribution"
+        ],
+        "polarity": "neutral",
+        "quote": "Blockspace is going to be abundant on every serious chain within two years."
+      },
+      {
+        "claim": "Most layer twos that exist today will not exist in three years.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "layer twos"
+        ],
+        "polarity": "bearish",
+        "quote": "most layer twos that exist today will not exist in three years"
+      },
+      {
+        "claim": "Halcyon plans to ship native account abstraction in the second half of next year.",
+        "kind": "roadmap",
+        "importance": 4,
+        "topics": [
+          "halcyon",
+          "account abstraction"
+        ],
+        "polarity": "bullish",
+        "quote": "we plan to ship native account abstraction in the second half of next year"
+      },
+      {
+        "claim": "The Halcyon ecosystem fund is committing $50 million to teams building consumer payments, with applications opening next week.",
+        "kind": "announcement",
+        "importance": 5,
+        "topics": [
+          "halcyon",
+          "payments",
+          "funding"
+        ],
+        "polarity": "bullish",
+        "quote": "We are also committing fifty million dollars from the Halcyon ecosystem fund to teams building consumer payments."
+      },
+      {
+        "claim": "Tessel's reserve income is down about 40 percent year on year despite its supply growing.",
+        "kind": "metric",
+        "importance": 4,
+        "topics": [
+          "tessel",
+          "stablecoins"
+        ],
+        "polarity": "bearish",
+        "quote": "Tessel's reserve income is down about forty percent year on year, even though our supply grew."
+      },
+      {
+        "claim": "Tessel's circulating stablecoin supply is $9 billion, up from $6 billion in January.",
+        "kind": "metric",
+        "importance": 4,
+        "topics": [
+          "tessel",
+          "stablecoins"
+        ],
+        "polarity": "bullish",
+        "quote": "Our circulating supply is nine billion dollars today, up from six billion in January."
+      },
+      {
+        "claim": "Sixty percent of Tessel's transfer volume is now merchant settlement and payroll rather than trading.",
+        "kind": "metric",
+        "importance": 3,
+        "topics": [
+          "tessel",
+          "payments"
+        ],
+        "polarity": "bullish",
+        "quote": "Sixty percent of our transfer volume now is merchant settlement and payroll, not trading."
+      },
+      {
+        "claim": "Kestrel Bank will launch its tokenised deposit pilot in Q2 with twelve corporate clients and expects about $2 billion a month through it by year end.",
+        "kind": "announcement",
+        "importance": 5,
+        "topics": [
+          "kestrel bank",
+          "tokenised deposits"
+        ],
+        "polarity": "bullish",
+        "quote": "Kestrel will launch its tokenised deposit pilot in the second quarter with twelve corporate clients"
+      },
+      {
+        "claim": "Most businesses will prefer to hold insured, interest-paying tokenised deposits over stablecoins.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "tokenised deposits",
+          "stablecoins"
+        ],
+        "polarity": "neutral",
+        "quote": "I think that is what most businesses will actually want to hold."
+      },
+      {
+        "claim": "Stablecoins will beat deposit tokens because a deposit token only works between clients of the same bank.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "stablecoins",
+          "tokenised deposits"
+        ],
+        "polarity": "neutral",
+        "quote": "A deposit token only works between clients of the same bank."
+      },
+      {
+        "claim": "Regulators will soon require bank-like rules of non-banks holding billions in stablecoin reserves.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "regulation",
+          "stablecoins"
+        ],
+        "polarity": "bearish",
+        "quote": "regulators will not let non-banks hold nine billion dollars of other people's money without bank-like rules for much longer."
+      },
+      {
+        "claim": "Tessel filed for a national trust charter in September and expects a decision in the first half of next year.",
+        "kind": "announcement",
+        "importance": 4,
+        "topics": [
+          "tessel",
+          "regulation"
+        ],
+        "polarity": "neutral",
+        "quote": "Tessel filed for a national trust charter in September, and we expect a decision in the first half of next year."
+      },
+      {
+        "claim": "From January, Tessel will pass half of its reserve yield to wallets that hold for more than thirty days.",
+        "kind": "announcement",
+        "importance": 5,
+        "topics": [
+          "tessel",
+          "stablecoins",
+          "yield"
+        ],
+        "polarity": "bullish",
+        "quote": "From January, Tessel will pass through half of its reserve yield to wallets that hold more than thirty days."
+      },
+      {
+        "claim": "Within three years the difference between stablecoins and bank deposits will be a legal detail customers never see.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "stablecoins",
+          "tokenised deposits"
+        ],
+        "polarity": "neutral",
+        "quote": "within three years the difference between the two will be a legal detail the customer never sees."
+      },
+      {
+        "claim": "Stablecoin supply on Halcyon will pass $50 billion within a year, from $14 billion today.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "halcyon",
+          "stablecoins"
+        ],
+        "polarity": "bullish",
+        "quote": "Stablecoin supply on Halcyon passes fifty billion dollars. It is at fourteen billion today."
+      },
+      {
+        "claim": "More than half of Kestrel Bank's cross-border corporate payments will settle on chain within a year.",
+        "kind": "opinion",
+        "importance": 3,
+        "topics": [
+          "kestrel bank",
+          "payments"
+        ],
+        "polarity": "bullish",
+        "quote": "More than half of Kestrel's cross-border corporate payments will settle on chain."
+      }
+    ],
+    "summaries": {
+      "Halcyon: the next two years": {
+        "headline": "Halcyon's Lattice upgrade goes live on mainnet on March 3, alongside a settlement pilot with Kestrel Bank.",
+        "overview": "Mira Voss set out Halcyon's plan for the next two years around four commitments: the Lattice upgrade on a fixed date, fees close to zero, more than one validator client, and regulated banks settling on chain. She acknowledged that June's five-hour outage was the team's own fault and presented client diversity as the answer to it. She closed with a view of the industry: blockspace is about to be abundant everywhere, so distribution through wallets and banks, not benchmarks, will decide which chains last.",
+        "key_points": [
+          "Lattice replaces Halcyon's execution scheduler and ships to mainnet on March 3; Voss called the date locked.",
+          "On testnet Lattice held 85,000 transactions per second for 90 days, against a mainnet peak of about 11,000 today.",
+          "Halcyon Labs has funded two independent validator clients after June's outage and wants no client above half of stake by the end of next year.",
+          "Kestrel Bank will settle tokenised deposits on Halcyon, starting with a pilot in the second quarter.",
+          "Voss argued the scaling debate is over and that most of today's layer twos will be gone within three years."
+        ],
+        "announcements": [
+          "Halcyon Labs will activate the Lattice upgrade on mainnet on March 3.",
+          "Halcyon Labs and Kestrel Bank will pilot settlement of Kestrel's tokenised deposits on Halcyon in the second quarter.",
+          "The Halcyon ecosystem fund is committing $50 million to consumer payments teams, with applications opening next week.",
+          "Halcyon plans to ship native account abstraction in the second half of next year."
+        ],
+        "numbers": [
+          "Lattice sustained 85,000 transactions per second with a 400 ms median confirmation on testnet, according to Mira Voss.",
+          "Halcyon passed 4.2 million daily active addresses in October, up from 1.6 million a year earlier.",
+          "Halcyon counted 3,100 monthly active developers last month, its highest figure.",
+          "Kestrel Bank holds $40 billion in deposits, according to Voss."
+        ],
+        "quotes": [
+          {
+            "speaker": "Mira Voss",
+            "quote": "The scaling debate is over. Blockspace is going to be abundant on every serious chain within two years."
+          },
+          {
+            "speaker": "Mira Voss",
+            "quote": "The outage in June lasted five hours and it was our fault."
+          },
+          {
+            "speaker": "Mira Voss",
+            "quote": "This is not a marketing partnership. They are putting real balances on chain."
+          }
+        ]
+      },
+      "Stablecoins after the yield era": {
+        "headline": "Tessel will share half of its reserve yield with holders from January and has applied for a national trust charter.",
+        "overview": "Elena Park pressed a stablecoin issuer and a bank on what is left of the business now that reserve income has fallen. Priya Raman said Tessel has turned into a payments company and will start passing yield to holders; Jonas Weller said Kestrel's corporate clients pushed it on chain by asking for weekend settlement. They disagreed on the end state: Weller expects businesses to prefer insured, interest-paying deposit tokens, while Raman argued that open stablecoins beat instruments that only work inside one bank. Both expect the two to converge under bank-like regulation.",
+        "key_points": [
+          "Tessel's reserve income fell about 40 percent year on year even as supply grew to $9 billion, Priya Raman said.",
+          "Sixty percent of Tessel's transfer volume is now merchant settlement and payroll rather than trading.",
+          "Kestrel Bank will pilot tokenised deposits with twelve corporate clients in the second quarter, Jonas Weller said.",
+          "Weller argued a tokenised deposit is not a stablecoin: it is an insured, interest-bearing claim on the bank.",
+          "Raman countered that a deposit token only works between clients of the same bank, and open networks win.",
+          "Weller predicted that within three years the difference will be a legal detail customers never see."
+        ],
+        "announcements": [
+          "Tessel will pass half of its reserve yield to wallets holding for more than thirty days, starting in January.",
+          "Tessel filed for a national trust charter in September and expects a decision in the first half of next year.",
+          "Kestrel Bank will launch its tokenised deposit pilot in the second quarter with twelve corporate clients."
+        ],
+        "numbers": [
+          "Tessel's circulating supply is $9 billion, up from $6 billion in January, according to Priya Raman.",
+          "Kestrel expects about $2 billion a month to move through its deposit pilot by year end, according to Jonas Weller.",
+          "Stablecoin supply on Halcyon is $14 billion today; Raman predicts $50 billion within a year."
+        ],
+        "quotes": [
+          {
+            "speaker": "Priya Raman",
+            "quote": "Open networks beat closed ones, they always have."
+          },
+          {
+            "speaker": "Jonas Weller",
+            "quote": "If stablecoins pay yield, they compete directly with deposits."
+          },
+          {
+            "speaker": "Priya Raman",
+            "quote": "The big change is that the yield went away."
+          }
+        ]
+      }
+    }
+  }
+}

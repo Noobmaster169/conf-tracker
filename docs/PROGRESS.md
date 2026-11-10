@@ -1,6 +1,22 @@
 # Progress
 
-Phase 0 is current: local work done, box items pending (`docs/phases/phase-00-copy-and-stand-up.md`).
+Phase 0's box items are still pending (`docs/phases/phase-00-copy-and-stand-up.md`).
+
+2026-11-10, the app revamp (branch `revamp/conference-app`): the dashboard was replaced by five pages (Videos, Monitor,
+Sessions, Speakers, Admin) and the backend gained the conference layer they need. This pulled most of phases 1 and 2
+and parts of 3 forward, and added per-session summaries, which the design had listed as a non-goal:
+
+- Built: stages, schedules (form and paste), people, videos bound to a stage, the tracker loop and timeline, admin
+  correction of what is on stage, schedule-aware naming with person linking, `extract/v4` with kind and importance,
+  a summary per finished session, the feed and card routes.
+- Verified only with fakes and scripted answers (`pnpm simulate --scripted`): no model login and no speech service were
+  reachable from the dev machine. **The four new prompts have never been run against a real model or a real stream.**
+  First thing to do on the box: one past conference video on a stage with its real schedule.
+- Removed from the frontend: the claims explorer, compare, replay panel, audit drawer, speaker and topic panels and the
+  status bar. Their backend routes (`/claims`, `/calls`, replay, topics) are still there.
+- Not built: alerts and browser notifications, alert dedupe, re-extraction after a tracker switch, the drift hint from
+  wall-clock time, entities and `first_party`, the evaluation view, a separate admin secret, photo upload (a photo is a
+  link the admin pastes).
 
 ## Phases
 
@@ -37,6 +53,13 @@ Carried over from yt-stream (still apply to the copied code):
 - A fast replay's runs see speaker names and merges from past their `upTo`.
 
 New:
+
+- The tracker cannot represent a session that is not on the schedule: it answers `unknown` and the previous belief stands, so an unscheduled talk's claims are filed under the session before it until the admin corrects it.
+- A span is rewritten or closed in place; superseded tracker verdicts are not kept as rows (the call that produced each is).
+- A summary is written once, when the session leaves the stage. Claims extracted or re-attributed later do not refresh it; the admin can ask for it again.
+- `people` are matched by exact name. Two different people with one name share a row, and a name heard two ways off-schedule makes two.
+- Monitor polls every five seconds per open tab instead of using a conference-wide SSE channel.
+- The video page of a long recording renders the whole transcript at once.
 
 - Speech's `HlsSource` reads a past video's URL as fast as ffmpeg delivers, and the resolved URL can
   expire on a 6 to 9 hour video. Phase 4 downloads the audio first.
