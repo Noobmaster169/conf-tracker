@@ -28,6 +28,7 @@ export interface StageInput {
   name: string;
   day: string | null;
   description: string;
+  hidden: boolean;
 }
 
 export function createStage(input: StageInput): Promise<Stage> {
@@ -74,6 +75,11 @@ export interface PersonInput {
   org: string | null;
   title: string | null;
   photo_url: string | null;
+}
+
+export async function removePerson(id: number): Promise<void> {
+  const response = await request(`/people/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new BackendError(await refusalMessage(response), response.status);
 }
 
 export function updatePerson(id: number, input: PersonInput): Promise<Person> {

@@ -24,6 +24,12 @@ and parts of 3 forward, and added per-session summaries, which the design had li
 - Speaker photos can be stored: `person_photos` (migration 007) keeps the bytes, `PUT /people/:id/photo` takes a base64
   JSON body and points `people.photo_url` at `/people/:id/photo?v=...`, and the frontend reads it through
   `/api/photo/[id]` so the backend key stays server-side. Built because the conference site's image links expire.
+- Test runs can be hidden: `stages.hidden` (migration 008, a tick box on the stage in Admin). A hidden stage's sessions,
+  videos and claims leave Videos, Monitor, Sessions and Speakers; a speaker is hidden with it only if they first appeared
+  after that stage was created and are on nothing shown. Admin still lists everything (`/videos?all=1`,
+  `/people?all=1`), and a hidden video or session still opens by its link. A video with no stage is hidden by moving it
+  onto a hidden stage.
+- `DELETE /people/:id` (Admin, Speakers, "Remove speaker") removes someone on no session and heard in no video.
 
 ## Phases
 

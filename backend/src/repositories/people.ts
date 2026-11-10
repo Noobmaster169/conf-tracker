@@ -54,6 +54,25 @@ export async function update(db: Queryable, id: number, input: Required<NewPerso
   }
 }
 
+/**
+ * Takes a person out for good. Refused while they are on a schedule or a voice in a video is theirs: those would lose
+ * their name. Null when there is no such person.
+ */
+export async function remove(db: Queryable, id: number): Promise<boolean | null> {
+  if (!(await get(db, id))) return null;
+  const { rows } = await db.query(
+    `select 1 from talk_speakers ts join talks t on t.id = ts.talk_id where ts.person_id = $1 and t.archived_at is null
+     union all select 1 from speakers where person_id = $1 limit 1`,
+    [id],
+  );
+  if (rows.length > 0) throw new TerminalError("this speaker is on a schedule or was heard in a video; take them off the session first");
+  // What is left can only be a place on a session that was itself removed from its schedule, and a stored photo.
+  await db.query("delete from talk_speakers where person_id = $1", [id]);
+  await db.query("delete from person_photos where person_id = $1", [id]);
+  await db.query("delete from people where id = $1", [id]);
+  return true;
+}
+
 /** Everyone a video's page may need to show: the people its named speakers are, and the people on its stage's schedule. */
 export async function forSession(db: Queryable, sessionId: string): Promise<Person[]> {
   const { rows } = await db.query<PersonRow>(

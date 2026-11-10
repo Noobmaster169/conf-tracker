@@ -9,26 +9,29 @@ export interface StageRow {
   name: string;
   day: string | null;
   description: string;
+  hidden: boolean;
   created_at: Date;
 }
 
 // The date is read as text: pg would otherwise hand back a Date at local midnight, a day off in some zones.
-export const COLUMNS = "id, conference, name, day::text as day, description, created_at";
+export const COLUMNS = "id, conference, name, day::text as day, description, hidden, created_at";
 export const toStage = (row: StageRow): Stage => Stage.parse({ ...row, created_at: row.created_at.toISOString() });
 
-export async function create(db: Queryable, input: StageBody): Promise<Stage> {
+type StageInput = Omit<StageBody, "hidden"> & { hidden?: boolean };
+
+export async function create(db: Queryable, input: StageInput): Promise<Stage> {
   const { rows } = await db.query<StageRow>(
-    `insert into stages (conference, name, day, description) values ($1, $2, $3, $4) returning ${COLUMNS}`,
-    [input.conference, input.name, input.day, input.description],
+    `insert into stages (conference, name, day, description, hidden) values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
+    [input.conference, input.name, input.day, input.description, input.hidden ?? false],
   );
   return toStage(rows[0]!);
 }
 
-export async function update(db: Queryable, id: string, input: StageBody): Promise<Stage | null> {
+export async function update(db: Queryable, id: string, input: StageInput): Promise<Stage | null> {
   if (!z.uuid().safeParse(id).success) return null;
   const { rows } = await db.query<StageRow>(
-    `update stages set conference = $2, name = $3, day = $4, description = $5 where id = $1 returning ${COLUMNS}`,
-    [id, input.conference, input.name, input.day, input.description],
+    `update stages set conference = $2, name = $3, day = $4, description = $5, hidden = $6 where id = $1 returning ${COLUMNS}`,
+    [id, input.conference, input.name, input.day, input.description, input.hidden ?? false],
   );
   return rows[0] ? toStage(rows[0]) : null;
 }

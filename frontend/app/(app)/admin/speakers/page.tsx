@@ -1,4 +1,4 @@
-import { updatePersonAction } from "@/app/actions/admin";
+import { removePersonAction, updatePersonAction } from "@/app/actions/admin";
 import { AdminTabs, Field, Notice, SubmitButton } from "@/components/admin/parts";
 import { Avatar } from "@/components/ui/avatar";
 import { Empty, Page, PageHeader } from "@/components/ui/bits";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminSpeakersPage({ searchParams }: PageProps<"/admin/speakers">) {
   const { error, done } = await searchParams;
-  const people = await listPeople();
+  const people = await listPeople(true);
   return (
     <Page narrow>
       <PageHeader title="Admin" lead="Speakers are created when a schedule names them or a stream introduces them. Correct a name, fill in who they are, and give them a photo here." />
@@ -47,6 +47,11 @@ export default async function AdminSpeakersPage({ searchParams }: PageProps<"/ad
                 <div className="sm:col-span-2">
                   <SubmitButton working="Saving">Save speaker</SubmitButton>
                 </div>
+              </form>
+              <form action={removePersonAction} className="mt-3 border-t border-line pt-3">
+                <input type="hidden" name="id" value={person.id} />
+                <SubmitButton quiet working="Removing">Remove speaker</SubmitButton>
+                <span className="ml-3 text-[13px] text-ink-faint">Only for someone on no session and heard in no video.</span>
               </form>
             </details>
           </li>

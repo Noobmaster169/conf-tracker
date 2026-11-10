@@ -14,9 +14,10 @@ const PAGE_CLAIMS = 200;
 export function conferenceRouter({ db }: { db: Queryable }): Router {
   const router = Router();
 
-  router.get("/videos", async (_req, res, next) => {
+  // ?all=1 is the admin area's list: it includes the videos of hidden stages.
+  router.get("/videos", async (req, res, next) => {
     try {
-      res.json(await cards.videos(db));
+      res.json(await cards.videos(db, req.query.all === "1"));
     } catch (error) {
       next(error);
     }
@@ -35,9 +36,9 @@ export function conferenceRouter({ db }: { db: Queryable }): Router {
     }
   });
 
-  router.get("/people", async (_req, res, next) => {
+  router.get("/people", async (req, res, next) => {
     try {
-      res.json(await cards.peopleCards(db));
+      res.json(await cards.peopleCards(db, undefined, req.query.all === "1"));
     } catch (error) {
       next(error);
     }

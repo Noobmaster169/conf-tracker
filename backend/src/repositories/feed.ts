@@ -33,9 +33,10 @@ feed as (
   select ${claimRepo.COLUMNS.split(", ").map((c) => `c.${c}`).join(", ")},
          sv.name as speaker_name, p.id as person_id, p.name as person_name, p.org as person_org, p.title as person_title,
          p.photo_url as person_photo_url, k.talk_id, t.title as talk_title,
-         ss.source_url, ss.title as video_title, ss.started_at as video_started_at
+         ss.source_url, ss.title as video_title, ss.started_at as video_started_at, coalesce(sg.hidden, false) as stage_hidden
   from claims c
   join sessions ss on ss.id = c.session_id
+  left join stages sg on sg.id = ss.stage_id
   left join survivor r on r.session_id = c.session_id and r.raw_id = c.speaker_id
   left join speakers sv on sv.session_id = c.session_id and sv.speaker_id = coalesce(r.cur, c.speaker_id)
   left join people p on p.id = sv.person_id
@@ -87,6 +88,8 @@ export async function list(db: Queryable, query: FeedQuery): Promise<Feed> {
   if (query.person !== undefined) conds.push(`f.person_id = ${p(query.person)}`);
   if (query.talk !== undefined) conds.push(`f.talk_id = ${p(query.talk)}`);
   if (query.session !== undefined) conds.push(`f.session_id = ${p(query.session)}`);
+  // A hidden stage's claims are read only by asking for its video or one of its talks, never met in a list.
+  if (query.session === undefined && query.talk === undefined) conds.push("not f.stage_hidden");
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
   const { rows } = await db.query<Row>(`${FEED} select f.* from feed f ${where} order by f.id desc limit ${p(query.limit + 1)}`, params);
   const page = rows.slice(0, query.limit).map(toItem);

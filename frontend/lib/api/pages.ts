@@ -5,8 +5,9 @@ import { BackendError, get, parseAs, refusalMessage, request } from "./transport
 
 /** What each page opens on. Read-only. */
 
-export function listVideos(): Promise<VideoCard[]> {
-  return get(z.array(VideoCard), "/videos");
+/** `all` is for the admin area: it adds what belongs to hidden stages. */
+export function listVideos(all = false): Promise<VideoCard[]> {
+  return get(z.array(VideoCard), all ? "/videos?all=1" : "/videos");
 }
 
 /** GET /feed; the query string passes through and the backend validates it. */
@@ -14,8 +15,8 @@ export function getFeed(query = ""): Promise<Feed> {
   return get(Feed, query ? `/feed?${query}` : "/feed");
 }
 
-export function listPeople(): Promise<PersonCard[]> {
-  return get(z.array(PersonCard), "/people");
+export function listPeople(all = false): Promise<PersonCard[]> {
+  return get(z.array(PersonCard), all ? "/people?all=1" : "/people");
 }
 
 export function listTalks(): Promise<TalkCard[]> {

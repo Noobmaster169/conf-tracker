@@ -35,6 +35,7 @@ const stageInput = (form: FormData): api.StageInput => ({
   name: text(form, "name"),
   day: orNull(form, "day"),
   description: text(form, "description"),
+  hidden: form.get("hidden") === "on",
 });
 
 const talkInput = (form: FormData): api.TalkInput => ({
@@ -95,4 +96,8 @@ export async function updatePersonAction(form: FormData): Promise<void> {
   await run(form, "/admin/speakers", "Speaker saved", async () => {
     await api.updatePerson(Number(text(form, "id")), { name: text(form, "name"), org: orNull(form, "org"), title: orNull(form, "title"), photo_url: orNull(form, "photo_url") ?? orNull(form, "photo_stored") });
   });
+}
+
+export async function removePersonAction(form: FormData): Promise<void> {
+  await run(form, "/admin/speakers", "Speaker removed", () => api.removePerson(Number(text(form, "id"))));
 }

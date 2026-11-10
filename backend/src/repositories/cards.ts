@@ -20,8 +20,8 @@ interface VideoRow extends sessions.SessionRow {
   duration_s: number;
 }
 
-/** Every video ever tracked, newest first. Replays are experiments and are left out. */
-export async function videos(db: Queryable): Promise<VideoCard[]> {
+/** Every video ever tracked, newest first. Replays are experiments and are left out, and so are a hidden stage's videos unless asked for. */
+export async function videos(db: Queryable, includeHidden = false): Promise<VideoCard[]> {
   const { rows } = await db.query<VideoRow>(
     `select ${S_COLUMNS}, ${STAGE_JSON}, n.id as now_id, n.title as now_title,
        (select count(*) from claims c where c.session_id = s.id and c.status = 'ok')::int as claim_count,
@@ -32,8 +32,9 @@ export async function videos(db: Queryable): Promise<VideoCard[]> {
        select t.id, t.title from talk_spans k join talks t on t.id = k.talk_id
        where k.session_id = s.id and k.t1 is null and k.state = 'talk' order by k.id desc limit 1
      ) n on true
-     where s.replay_of is null
+     where s.replay_of is null and ($1 or not coalesce(g.hidden, false))
      order by s.created_at desc limit 200`,
+    [includeHidden],
   );
   return rows.map((row) =>
     VideoCard.parse({
@@ -75,7 +76,9 @@ export async function talkCards(db: Queryable, filter: TalkFilter = {}): Promise
     return `$${params.length}`;
   };
   const conds = ["t.archived_at is null", "t.kind <> 'break'"];
+  // A hidden stage's talk is read by asking for it, never met in a list.
   if (filter.id !== undefined) conds.push(`t.id = ${p(filter.id)}`);
+  else conds.push("not g.hidden");
   if (filter.stageId !== undefined) conds.push(`t.stage_id = ${p(filter.stageId)}`);
   if (filter.personId !== undefined) conds.push(`exists (select 1 from talk_speakers x where x.talk_id = t.id and x.person_id = ${p(filter.personId)})`);
   const { rows } = await db.query<TalkCardRow>(
@@ -120,25 +123,39 @@ interface PersonCardRow extends people.PersonRow {
   last_seen: Date | null;
 }
 
-/** Everyone the app knows, whether heard on a video or only scheduled so far; the most quoted first. */
-export async function peopleCards(db: Queryable, id?: number): Promise<PersonCard[]> {
+/**
+ * Everyone the app knows, whether heard on a video or only scheduled so far; the most quoted first. Someone who came
+ * in with a hidden stage and is on nothing else is left out of the list, and still answers by id. A person who was
+ * already known before that stage existed stays: a test run does not take a real speaker with it.
+ */
+export async function peopleCards(db: Queryable, id?: number, includeHidden = false): Promise<PersonCard[]> {
   const { rows } = await db.query<PersonCardRow>(
     `with recursive ${SURVIVOR_CTE},
      said as (
        select sv.person_id, count(*)::int as n, max(c.created_at) as last
        from claims c
        join sessions ss on ss.id = c.session_id and ss.replay_of is null
+       left join stages sg on sg.id = ss.stage_id
        left join survivor r on r.session_id = c.session_id and r.raw_id = c.speaker_id
        join speakers sv on sv.session_id = c.session_id and sv.speaker_id = coalesce(r.cur, c.speaker_id)
-       where c.status = 'ok' and sv.person_id is not null
+       where c.status = 'ok' and sv.person_id is not null and not coalesce(sg.hidden, false)
        group by sv.person_id
      )
      select ${people.COLUMNS.split(", ").map((c) => `p.${c}`).join(", ")}, coalesce(said.n, 0) as claim_count, said.last as last_seen,
        (select count(*) from talk_speakers ts join talks t on t.id = ts.talk_id where ts.person_id = p.id and t.archived_at is null)::int as talk_count
      from people p left join said on said.person_id = p.id
-     where ($1::bigint is null or p.id = $1)
+     left join lateral (
+       select coalesce(bool_or(not x.hidden), false) as any_shown, min(x.created_at) filter (where x.hidden) as hidden_since from (
+         select g.hidden, g.created_at from talk_speakers ts join talks t on t.id = ts.talk_id join stages g on g.id = t.stage_id
+         where ts.person_id = p.id and t.archived_at is null
+         union all
+         select coalesce(g.hidden, false), g.created_at from speakers v join sessions s on s.id = v.session_id left join stages g on g.id = s.stage_id
+         where v.person_id = p.id
+       ) x
+     ) seen on true
+     where ($1::bigint is null or p.id = $1) and ($1::bigint is not null or $2 or seen.any_shown or seen.hidden_since is null or p.created_at < seen.hidden_since)
      order by claim_count desc, p.name asc`,
-    [id ?? null],
+    [id ?? null, includeHidden],
   );
   return rows.map((row) =>
     PersonCard.parse({ person: people.toPerson(row), claim_count: row.claim_count, talk_count: row.talk_count, last_seen: row.last_seen?.toISOString() ?? null }),

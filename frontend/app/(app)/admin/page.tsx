@@ -73,7 +73,7 @@ function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[
 
 export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const { error, done } = await searchParams;
-  const [stages, videos] = await Promise.all([listStages(), listVideos()]);
+  const [stages, videos] = await Promise.all([listStages(), listVideos(true)]);
   return (
     <Page>
       <PageHeader title="Admin" lead="Set up a stage and its schedule first, then point a video at it. The schedule is what lets the tracker tell sessions and speakers apart." />
@@ -107,6 +107,13 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
             <Field label="About the conference" hint="A sentence. Given to the model as context.">
               <input name="description" placeholder="Solana's annual conference" className="field" />
             </Field>
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input type="checkbox" name="hidden"  className="mt-1" />
+              <span>
+                <span className="block font-medium">Hide from the app</span>
+                <span className="block text-[13px] text-ink-soft">For a test run. Its sessions, videos, claims and the speakers known only from it leave every page but Admin, and come back when this is unticked.</span>
+              </span>
+            </label>
             <div className="sm:col-span-2">
               <SubmitButton working="Creating">Create stage</SubmitButton>
             </div>
@@ -123,7 +130,10 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
               {stages.map(({ stage, talks, videos: bound }) => (
                 <li key={stage.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div>
-                    <p className="font-semibold">{stageLabel(stage)}</p>
+                    <p className="font-semibold">
+                      {stageLabel(stage)}
+                      {stage.hidden && <span className="ml-2 rounded-full bg-sunk px-2 py-0.5 text-[12px] font-medium text-ink-soft">Hidden</span>}
+                    </p>
                     <p className="text-[13px] text-ink-soft">
                       {plural(talks.length, "session")}, {plural(bound.length, "video")}
                     </p>

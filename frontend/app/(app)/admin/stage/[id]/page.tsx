@@ -30,6 +30,7 @@ export default async function StagePage({ params, searchParams }: PageProps<"/ad
       </p>
       <h1 className="mb-6 text-[28px] font-bold leading-tight tracking-tight">
         {stage.conference}, {stage.name}
+        {stage.hidden && <span className="ml-3 rounded-full bg-sunk px-2.5 py-1 align-middle text-[13px] font-medium text-ink-soft">Hidden</span>}
       </h1>
       <Notice error={error} done={done} />
       <div className="grid gap-6">
@@ -49,6 +50,13 @@ export default async function StagePage({ params, searchParams }: PageProps<"/ad
             <Field label="About the conference">
               <input name="description" defaultValue={stage.description} className="field" />
             </Field>
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input type="checkbox" name="hidden" defaultChecked={stage.hidden} className="mt-1" />
+              <span>
+                <span className="block font-medium">Hide from the app</span>
+                <span className="block text-[13px] text-ink-soft">For a test run. Its sessions, videos, claims and the speakers known only from it leave every page but Admin, and come back when this is unticked.</span>
+              </span>
+            </label>
             <div className="sm:col-span-2">
               <SubmitButton quiet working="Saving">Save stage</SubmitButton>
             </div>

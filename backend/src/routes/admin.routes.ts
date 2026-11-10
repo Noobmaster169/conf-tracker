@@ -172,6 +172,15 @@ export function adminRouter({ db, summarize }: AdminDeps): Router {
     }
   });
 
+  router.delete("/people/:id", async (req, res, next) => {
+    try {
+      if (!(await people.remove(db, Number(req.params.id) || 0))) return notFound(res, "person");
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.put("/people/:id/photo", async (req, res, next) => {
     try {
       const input = body(PhotoBody, req.body, res);

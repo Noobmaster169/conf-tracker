@@ -22,6 +22,8 @@ export const Stage = z.object({
   name: z.string(),
   day: z.string().nullable(),
   description: z.string(),
+  // A test run's stage: kept, and shown only in the admin area.
+  hidden: z.boolean(),
   created_at: z.string(),
 });
 export type Stage = z.infer<typeof Stage>;
@@ -101,6 +103,7 @@ export const StageBody = z.object({
   name: text(200).min(1),
   day: z.iso.date().nullish().transform((v) => v ?? null),
   description: text(4000).default(""),
+  hidden: z.boolean().default(false),
 });
 export type StageBody = z.infer<typeof StageBody>;
 

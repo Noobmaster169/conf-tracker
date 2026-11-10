@@ -7,7 +7,7 @@ import { z } from "zod";
 export const Person = z.object({ id: z.number(), name: z.string(), org: z.string().nullable(), title: z.string().nullable(), photo_url: z.string().nullable() });
 export type Person = z.infer<typeof Person>;
 
-export const Stage = z.object({ id: z.string(), conference: z.string(), name: z.string(), day: z.string().nullable(), description: z.string(), created_at: z.string() });
+export const Stage = z.object({ id: z.string(), conference: z.string(), name: z.string(), day: z.string().nullable(), description: z.string(), hidden: z.boolean().default(false), created_at: z.string() });
 export type Stage = z.infer<typeof Stage>;
 
 export const TalkKind = z.enum(["talk", "panel", "fireside", "keynote", "break", "other"]);
