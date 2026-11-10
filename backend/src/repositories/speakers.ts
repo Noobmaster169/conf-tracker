@@ -12,13 +12,15 @@ interface Row {
   name_confidence: number | null;
   name_quote: string | null;
   name_call_id: string | null;
+  person_id: string | null;
 }
 
-const COLUMNS = "speaker_id, first_seen_t, last_seen_t, talk_s, merged_into, name, role, name_confidence, name_quote, name_call_id";
+const COLUMNS = "speaker_id, first_seen_t, last_seen_t, talk_s, merged_into, name, role, name_confidence, name_quote, name_call_id, person_id";
 // The same columns read off the `s` alias of a self join.
 const S_COLUMNS = COLUMNS.split(", ").map((c) => `s.${c}`).join(", ");
 // bigint comes back as a string from pg.
-const toSpeaker = (row: Row): Speaker => Speaker.parse({ ...row, name_call_id: row.name_call_id === null ? null : Number(row.name_call_id) });
+const toSpeaker = (row: Row): Speaker =>
+  Speaker.parse({ ...row, name_call_id: row.name_call_id === null ? null : Number(row.name_call_id), person_id: row.person_id === null ? null : Number(row.person_id) });
 
 export async function upsert(
   db: Queryable,
@@ -72,7 +74,8 @@ export async function setName(db: Queryable, sessionId: string, speakerId: strin
 /** On a merge the survivor takes the absorbed speaker's name when it is the more confident one. Null when nothing changed. */
 export async function inheritName(db: Queryable, sessionId: string, from: string, into: string): Promise<Speaker | null> {
   const { rows } = await db.query<Row>(
-    `update speakers s set name = f.name, role = f.role, name_confidence = f.name_confidence, name_quote = f.name_quote, name_call_id = f.name_call_id
+    `update speakers s set name = f.name, role = f.role, name_confidence = f.name_confidence, name_quote = f.name_quote, name_call_id = f.name_call_id,
+       person_id = f.person_id
      from speakers f
      where s.session_id = $1 and s.speaker_id = $3 and f.session_id = $1 and f.speaker_id = $2
        and f.name is not null and (s.name is null or f.name_confidence > s.name_confidence)
@@ -89,5 +92,14 @@ export async function list(db: Queryable, sessionId: string): Promise<Speaker[]>
 
 export async function get(db: Queryable, sessionId: string, speakerId: string): Promise<Speaker | null> {
   const { rows } = await db.query<Row>(`select ${COLUMNS} from speakers where session_id = $1 and speaker_id = $2`, [sessionId, speakerId]);
+  return rows[0] ? toSpeaker(rows[0]) : null;
+}
+
+/** Points a named label at the person it is, and takes the person's spelling of the name. Null when the label is gone. */
+export async function setPerson(db: Queryable, sessionId: string, speakerId: string, person: { id: number; name: string }): Promise<Speaker | null> {
+  const { rows } = await db.query<Row>(
+    `update speakers set person_id = $3, name = $4 where session_id = $1 and speaker_id = $2 returning ${COLUMNS}`,
+    [sessionId, speakerId, person.id, person.name],
+  );
   return rows[0] ? toSpeaker(rows[0]) : null;
 }

@@ -34,8 +34,10 @@ test("a tick names who the window names, publishing the call and the renamed spe
     await say(tx, s.id, 0, "I'm Cathie Wood", "S2");
     const llm = fakeLlm(cathie);
     await createNamer({ db: tx, hub, sessionId: s.id, llm: llm.client, config }).tick();
-    expect(seen.map((e) => e.type)).toEqual(["call", "speaker"]);
-    expect(seen[1]?.type === "speaker" && seen[1].data).toMatchObject({ speaker_id: "S2", name: "Cathie Wood" });
+    // A named voice becomes a person, and the label points at it.
+    expect(seen.map((e) => e.type)).toEqual(["call", "person", "speaker"]);
+    expect(seen[1]?.type === "person" && seen[1].data).toMatchObject({ name: "Cathie Wood" });
+    expect(seen[2]?.type === "speaker" && seen[2].data).toMatchObject({ speaker_id: "S2", name: "Cathie Wood", person_id: seen[1]?.type === "person" ? seen[1].data.id : -1 });
     expect(llm.requests[0]?.model).toBe("sonnet");
   });
 });

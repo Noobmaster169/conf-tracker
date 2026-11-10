@@ -17,16 +17,20 @@ interface Row {
   models: Record<string, string>;
   error: string | null;
   created_at: Date;
+  stage_id: string | null;
+  title: string | null;
 }
 
-const COLUMNS = "id, source_url, source_file, replay_of, status, started_at, stopped_at, config, models, error, created_at";
+export const COLUMNS = "id, source_url, source_file, replay_of, status, started_at, stopped_at, config, models, error, created_at, stage_id, title";
 
 function toFoundSession(id: string, row: Row | undefined): Session {
   if (!row) throw new TerminalError(`session ${id} not found`);
   return toSession(row);
 }
 
-function toSession(row: Row): Session {
+export type SessionRow = Row;
+
+export function toSession(row: Row): Session {
   return Session.parse({
     ...row,
     video_id: row.source_url ? videoIdFromUrl(row.source_url) : null,
@@ -41,12 +45,14 @@ export interface NewSession {
   sourceFile: string | null;
   config: Record<string, unknown>;
   replayOf?: string | null;
+  stageId?: string | null;
+  title?: string | null;
 }
 
 export async function create(db: Queryable, input: NewSession): Promise<Session> {
   const { rows } = await db.query<Row>(
-    `insert into sessions (source_url, source_file, config, replay_of) values ($1, $2, $3, $4) returning ${COLUMNS}`,
-    [input.sourceUrl, input.sourceFile, JSON.stringify(input.config), input.replayOf ?? null],
+    `insert into sessions (source_url, source_file, config, replay_of, stage_id, title) values ($1, $2, $3, $4, $5, $6) returning ${COLUMNS}`,
+    [input.sourceUrl, input.sourceFile, JSON.stringify(input.config), input.replayOf ?? null, input.stageId ?? null, input.title ?? null],
   );
   return toSession(rows[0]!);
 }
@@ -96,4 +102,16 @@ export async function setError(db: Queryable, id: string, error: string): Promis
     [id, error],
   );
   return toFoundSession(id, rows[0]);
+}
+
+/** Binds a video to a stage, or frees it with null. The tracker reads the stage on its next run. */
+export async function setStage(db: Queryable, id: string, stageId: string | null): Promise<Session> {
+  const { rows } = await db.query<Row>(`update sessions set stage_id = $2 where id = $1 returning ${COLUMNS}`, [id, stageId]);
+  return toFoundSession(id, rows[0]);
+}
+
+/** The videos bound to a stage, newest first. Replays are experiments and are left out. */
+export async function forStage(db: Queryable, stageId: string): Promise<Session[]> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from sessions where stage_id = $1 and replay_of is null order by created_at desc`, [stageId]);
+  return rows.map(toSession);
 }

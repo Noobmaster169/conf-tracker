@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { type CallSummary, type Claim, Polarity } from "../contracts";
+import { type CallSummary, type Claim, ClaimKind, Polarity } from "../contracts";
 import type { Queryable } from "../db";
 import { isDuplicate, locateQuote } from "../pipeline/evidence";
 import { renderWindow, type Window } from "../pipeline/window";
@@ -11,7 +11,17 @@ import type { Prompt } from "./prompts/registry";
 import { callStructured } from "./structured";
 
 export const ExtractOutput = z.object({
-  claims: z.array(z.object({ claim: z.string().min(1), topics: z.array(z.string()), polarity: Polarity, quote: z.string() })),
+  claims: z.array(
+    z.object({
+      claim: z.string().min(1),
+      // Defaulted so an answer written for extract/v3, which asked for neither, still parses.
+      kind: ClaimKind.default("fact"),
+      importance: z.number().int().min(1).max(5).default(2),
+      topics: z.array(z.string()),
+      polarity: Polarity,
+      quote: z.string(),
+    }),
+  ),
 });
 export type ExtractOutput = z.infer<typeof ExtractOutput>;
 
@@ -40,6 +50,8 @@ function toClaims(output: ExtractOutput, window: Window, prior: Claim[]): claims
       claim: item.claim,
       topics: item.topics,
       polarity: item.polarity,
+      kind: item.kind,
+      importance: item.importance,
       quote: item.quote,
       quoteVerified: !duplicate && located !== null,
       status: duplicate ? "duplicate" : located ? "ok" : "unverified",
@@ -48,8 +60,14 @@ function toClaims(output: ExtractOutput, window: Window, prior: Claim[]): claims
 }
 
 /** One extraction over a window. Every attempt is a row in llm_calls, ok or not; a model failure returns no claims and never throws. */
-export async function runExtraction(deps: ExtractDeps, window: Window, prior: Claim[], names: ReadonlyMap<string, string> = new Map()): Promise<ExtractResult> {
-  const { call, data } = await callStructured(deps, ExtractOutput, window, renderWindow(window, prior, names));
+export async function runExtraction(
+  deps: ExtractDeps,
+  window: Window,
+  prior: Claim[],
+  names: ReadonlyMap<string, string> = new Map(),
+  onStage: string | null = null,
+): Promise<ExtractResult> {
+  const { call, data } = await callStructured(deps, ExtractOutput, window, renderWindow(window, prior, names, onStage));
   if (!data) return { call: calls.toSummary(call, 0), claims: [] };
   const stored = await claims.insertMany(deps.db, deps.sessionId, call.id, toClaims(data, window, prior));
   return { call: calls.toSummary(call, stored.length), claims: stored };

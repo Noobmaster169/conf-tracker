@@ -1,4 +1,4 @@
-import { Claim, type ClaimStatus, type Polarity, TopicCount } from "../contracts";
+import { Claim, type ClaimKind, type ClaimStatus, type Polarity, TopicCount } from "../contracts";
 import type { Queryable } from "../db";
 
 export interface Row {
@@ -14,10 +14,12 @@ export interface Row {
   quote: string;
   quote_verified: boolean;
   status: string;
+  kind: string | null;
+  importance: number | null;
   created_at: Date;
 }
 
-const COLUMNS = "id, session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, created_at";
+export const COLUMNS = "id, session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, kind, importance, created_at";
 // bigserial and bigint come back as strings from pg.
 export const toClaim = (row: Row): Claim => Claim.parse({ ...row, id: Number(row.id), call_id: Number(row.call_id), created_at: row.created_at.toISOString() });
 
@@ -31,6 +33,8 @@ export interface NewClaim {
   quote: string;
   quoteVerified: boolean;
   status: ClaimStatus;
+  kind?: ClaimKind | null;
+  importance?: number | null;
 }
 
 /** Stores the claims of one call in the order the model gave them; ids follow that order. */
@@ -38,9 +42,9 @@ export async function insertMany(db: Queryable, sessionId: string, callId: numbe
   const stored: Claim[] = [];
   for (const item of items) {
     const { rows } = await db.query<Row>(
-      `insert into claims (session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11) returning ${COLUMNS}`,
-      [sessionId, callId, item.speakerId, item.t0, item.t1, item.claim, item.topics, item.polarity, item.quote, item.quoteVerified, item.status],
+      `insert into claims (session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, kind, importance)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11, $12, $13) returning ${COLUMNS}`,
+      [sessionId, callId, item.speakerId, item.t0, item.t1, item.claim, item.topics, item.polarity, item.quote, item.quoteVerified, item.status, item.kind ?? null, item.importance ?? null],
     );
     stored.push(toClaim(rows[0]!));
   }

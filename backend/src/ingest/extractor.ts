@@ -5,13 +5,15 @@ import { ExtractConfig } from "../contracts";
 import type { Queryable } from "../db";
 import { childLogger } from "../lib/logger";
 import { segmentsToLines } from "../pipeline/lines";
-import { nameMap } from "../pipeline/naming";
+import { labelMap } from "../pipeline/naming";
 import { selectWindow } from "../pipeline/window";
 import type { Hub } from "../realtime/hub";
 import * as claims from "../repositories/claims";
+import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as speakers from "../repositories/speakers";
 import { createLoop, type Loop, type LoopFactory } from "./loop";
+import { loadStageContext, onStageText } from "./stage-context";
 
 const log = childLogger({ module: "extractor" });
 
@@ -45,8 +47,10 @@ export function createExtractor(deps: ExtractorDeps): Extractor {
       const window = selectWindow(segmentsToLines(upToNow), cursorT, config);
       if (!window) return;
       const prior = await claims.latest(db, sessionId, config.dedupe_n);
-      const names = nameMap(await speakers.list(db, sessionId));
-      const result = await runExtraction({ db, llm, sessionId, prompt }, window, prior, names);
+      const names = labelMap(await speakers.list(db, sessionId), await people.forSession(db, sessionId));
+      // The schedule's view of the stage, when the video has one: who "we" is, and what the session is about.
+      const context = await loadStageContext(db, sessionId);
+      const result = await runExtraction({ db, llm, sessionId, prompt }, window, prior, names, context ? onStageText(context) : null);
       hub.publish(sessionId, { type: "call", data: result.call });
       if (result.claims.length > 0) hub.publish(sessionId, { type: "claims.new", data: result.claims });
       if (result.call.error === null) cursorT = window.t1;

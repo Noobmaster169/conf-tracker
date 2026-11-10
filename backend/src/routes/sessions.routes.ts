@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { listVersions } from "../agents/prompts/registry";
-import { CreateSessionBody, ExtractConfig, NameConfig, ReplayBody } from "../contracts";
+import { CreateSessionBody, ExtractConfig, NameConfig, ReplayBody, SummaryConfig, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
 import { replayConfig } from "../lib/replay-config";
@@ -9,12 +9,15 @@ import { videoIdFromUrl } from "../lib/youtube-id";
 import type { Hub } from "../realtime/hub";
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
+import * as stages from "../repositories/stages";
 import { buildSnapshot } from "./snapshot";
 
 export interface SessionsDeps {
   db: Queryable;
   hub: Hub;
   runner: SessionRunner;
+  /** The video's title from YouTube, for the cards. Absent in tests; a failure is a video without a title, never a refusal. */
+  fetchTitle?: (url: string) => Promise<string | null>;
 }
 
 /** The same checks for a new session and a replay: a bad key or an unknown prompt version is named in the refusal. */
@@ -31,10 +34,16 @@ function configError(config: Record<string, unknown>): string | null {
     return `config.${issue?.path.join(".")}: ${issue?.message}`;
   }
   if (!listVersions("name").includes(naming.data.name_prompt)) return `no name prompt ${naming.data.name_prompt}`;
+  const track = TrackConfig.safeParse(config);
+  if (!track.success) return `config.${track.error.issues[0]?.path.join(".")}: ${track.error.issues[0]?.message}`;
+  if (!listVersions("track").includes(track.data.track_prompt)) return `no track prompt ${track.data.track_prompt}`;
+  const summary = SummaryConfig.safeParse(config);
+  if (!summary.success) return `config.${summary.error.issues[0]?.path.join(".")}: ${summary.error.issues[0]?.message}`;
+  if (!listVersions("summarize").includes(summary.data.summary_prompt)) return `no summarize prompt ${summary.data.summary_prompt}`;
   return null;
 }
 
-export function sessionsRouter({ db, hub, runner }: SessionsDeps): Router {
+export function sessionsRouter({ db, hub, runner, fetchTitle }: SessionsDeps): Router {
   const router = Router();
 
   router.post("/", async (req, res, next) => {
@@ -54,7 +63,12 @@ export function sessionsRouter({ db, hub, runner }: SessionsDeps): Router {
         res.status(400).json({ error: refused });
         return;
       }
-      const created = await sessions.create(db, { sourceUrl: body.data.url ?? null, sourceFile: body.data.file ?? null, config });
+      if (body.data.stage_id && !(await stages.get(db, body.data.stage_id))) {
+        res.status(400).json({ error: "no such stage" });
+        return;
+      }
+      const title = body.data.url && fetchTitle ? await fetchTitle(body.data.url) : null;
+      const created = await sessions.create(db, { sourceUrl: body.data.url ?? null, sourceFile: body.data.file ?? null, config, stageId: body.data.stage_id ?? null, title });
       res.status(201).json(await runner.start(created.id));
     } catch (error) {
       next(error);
@@ -84,7 +98,7 @@ export function sessionsRouter({ db, hub, runner }: SessionsDeps): Router {
         res.status(400).json({ error: refused });
         return;
       }
-      const created = await sessions.create(db, { sourceUrl: original.source_url, sourceFile: original.source_file, config, replayOf: original.id });
+      const created = await sessions.create(db, { sourceUrl: original.source_url, sourceFile: original.source_file, config, replayOf: original.id, stageId: original.stage_id, title: original.title });
       res.status(201).json(await runner.start(created.id));
     } catch (error) {
       next(error);

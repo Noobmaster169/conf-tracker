@@ -1,5 +1,6 @@
-import type { ProposalStatus, Speaker } from "../contracts";
+import type { Person, ProposalStatus, Speaker } from "../contracts";
 import { locateQuote } from "./evidence";
+import { sameWord } from "./people-match";
 import type { Line } from "./lines";
 import { renderLine } from "./window";
 
@@ -27,6 +28,20 @@ export function nameMap(speakers: Speaker[]): Map<string, string> {
     if (name !== null) names.set(s.speaker_id, name);
   }
   return names;
+}
+
+/** nameMap, with the organisation after the name once the speaker is a known person: "Jane Doe, Acme". It is what resolves a "we". */
+export function labelMap(speakers: Speaker[], people: Person[]): Map<string, string> {
+  const orgs = new Map(people.map((p) => [p.id, p.org]));
+  const byId = new Map(speakers.map((s) => [s.speaker_id, s]));
+  const labels = new Map<string, string>();
+  for (const s of speakers) {
+    const survivor = byId.get(resolveId(speakers, s.speaker_id));
+    if (!survivor?.name) continue;
+    const org = survivor.person_id === null ? null : (orgs.get(survivor.person_id) ?? null);
+    labels.set(s.speaker_id, org ? `${survivor.name}, ${org}` : survivor.name);
+  }
+  return labels;
 }
 
 export interface NameWindow {
@@ -63,8 +78,8 @@ export function selectNameWindow(lines: Line[], speakers: Speaker[], cfg: NameWi
   return { lines: recent, t0: recent[0]!.t0, t1: last.t1, present, candidates };
 }
 
-/** The user message: the sections agents/prompts/name names, in this order. */
-export function renderNameWindow(window: NameWindow, speakers: Speaker[]): string {
+/** The user message: the sections agents/prompts/name names, in this order. `scheduled` lists who the schedule expects, the current talk's speakers first. */
+export function renderNameWindow(window: NameWindow, speakers: Speaker[], scheduled: string[] = []): string {
   const rows = new Map(speakers.map((s) => [s.speaker_id, s]));
   const roster = window.present.map((id) => {
     const row = rows.get(id);
@@ -72,7 +87,8 @@ export function renderNameWindow(window: NameWindow, speakers: Speaker[]): strin
     const role = row.role ? `, ${row.role}` : "";
     return `${id}: ${row.name}${role} (confidence ${(row.name_confidence ?? 0).toFixed(2)})`;
   });
-  return `## speakers\n${roster.join("\n")}\n\n## transcript\n${window.lines.map((l) => renderLine(l)).join("\n")}`;
+  const expected = scheduled.length > 0 ? `## scheduled speakers\n${scheduled.join("\n")}\n\n` : "";
+  return `${expected}## speakers\n${roster.join("\n")}\n\n## transcript\n${window.lines.map((l) => renderLine(l)).join("\n")}`;
 }
 
 export interface Proposal {
@@ -97,9 +113,10 @@ export interface Judged {
 // Whole words of 2+ characters, so an initial or "Al" inside "also" cannot stand in for a name.
 const words = (text: string): string[] => (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length >= 2);
 
+/** A word of the name is in the quote, through the one or two wrong letters speech recognition gives a surname. */
 function mentionsName(quote: string, name: string): boolean {
-  const said = new Set(words(quote));
-  return words(name).some((w) => said.has(w));
+  const said = words(quote);
+  return words(name).some((w) => said.some((q) => sameWord(w, q)));
 }
 
 /**

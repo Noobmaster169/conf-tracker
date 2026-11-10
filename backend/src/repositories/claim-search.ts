@@ -22,7 +22,7 @@ with recursive chain as (
 survivor as (select session_id, raw_id, cur from chain where merged_into is null),
 hits as (
   select c.id, c.session_id, c.call_id, c.speaker_id, c.t0, c.t1, c.claim, c.topics, c.polarity, c.quote, c.quote_verified,
-         c.status, c.created_at,
+         c.status, c.kind, c.importance, c.created_at,
          coalesce(r.cur, c.speaker_id) as survivor_id, sv.name as speaker_name, sv.role as speaker_role,
          ss.created_at as session_created_at, ss.started_at as session_started_at, ss.source_url, ss.source_file
   from claims c

@@ -28,9 +28,9 @@ export interface NameResult {
 }
 
 /** One naming call over a window. Every proposal is stored with the judge's verdict; only accepted ones touch a speaker. Never throws for a model failure. */
-export async function runNaming(deps: NameDeps, window: NameWindow, roster: Speaker[]): Promise<NameResult> {
+export async function runNaming(deps: NameDeps, window: NameWindow, roster: Speaker[], scheduled: string[] = []): Promise<NameResult> {
   const { db, sessionId } = deps;
-  const { call, data } = await callStructured(deps, NameOutput, window, renderNameWindow(window, roster));
+  const { call, data } = await callStructured(deps, NameOutput, window, renderNameWindow(window, roster, scheduled));
   if (!data) return { call: calls.toSummary(call, 0), proposals: [], named: [] };
   // Names are written before the proposals are stored: a stored row is never updated, so its verdict must already
   // account for a merge or a stronger name that landed while the model was answering.

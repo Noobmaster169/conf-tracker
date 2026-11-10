@@ -44,10 +44,11 @@ export function renderLine(line: Line, names: ReadonlyMap<string, string> = NO_N
 
 const NONE = "(none)";
 
-/** The user message: the sections the prompt (agents/prompts/extract) names, in this order. */
-export function renderWindow(window: Window, prior: { claim: string }[], names: ReadonlyMap<string, string> = NO_NAMES): string {
+/** The user message: the sections the prompt (agents/prompts/extract) names, in this order. `onStage` is the schedule's context, when the video has a stage. */
+export function renderWindow(window: Window, prior: { claim: string }[], names: ReadonlyMap<string, string> = NO_NAMES, onStage: string | null = null): string {
   const already = prior.length > 0 ? prior.map((c) => `- ${c.claim}`).join("\n") : NONE;
   const context = window.context.length > 0 ? window.context.map((l) => renderLine(l, names)).join("\n") : NONE;
   const fresh = window.fresh.map((l) => renderLine(l, names)).join("\n");
-  return `## already extracted\n${already}\n\n## context (already handled, for reference only)\n${context}\n\n## new lines (extract from these)\n${fresh}`;
+  const stage = onStage ? `## on stage\n${onStage}\n\n` : "";
+  return `${stage}## already extracted\n${already}\n\n## context (already handled, for reference only)\n${context}\n\n## new lines (extract from these)\n${fresh}`;
 }

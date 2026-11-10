@@ -31,9 +31,10 @@ test("versions sort numerically, and a bad file or version is a terminal error n
   expect(() => listVersions("missing", dir)).toThrow(/no prompts for step "missing"/);
 });
 
-test("extract v3 is the only extract prompt and is about conference talks", () => {
-  expect(listVersions("extract")).toEqual(["v3"]);
-  expect(latestVersion("extract")).toBe("v3");
+test("extract v4 is the newest extract prompt; v3 stays loadable and both are about conference talks", () => {
+  expect(listVersions("extract")).toEqual(["v4", "v3"]);
+  expect(latestVersion("extract")).toBe("v4");
+  expect(loadPrompt("extract", "v4").text).toContain("on stage");
   const prompt = loadPrompt("extract", "v3");
   expect(prompt).toMatchObject({ step: "extract", version: "v3", model: "sonnet" });
   expect(prompt.text).toContain("{{schema}}");

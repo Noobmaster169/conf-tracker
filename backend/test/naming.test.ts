@@ -6,7 +6,7 @@ import { judgeProposals, nameMap, renderNameWindow, resolveId, selectNameWindow 
 
 const speaker = (id: string, extra: Partial<Speaker> = {}): Speaker => ({
   speaker_id: id, first_seen_t: 0, last_seen_t: 0, talk_s: 0, merged_into: null,
-  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, ...extra,
+  name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, person_id: null, ...extra,
 });
 const line = (t0: number, speaker_id: string | null, text: string): Line => ({ segment_id: 1, t0, t1: t0 + 4, speaker_id, text });
 const cfg = { name_window_s: 180, name_floor: 0.7 };

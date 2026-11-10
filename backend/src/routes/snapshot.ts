@@ -3,8 +3,12 @@ import type { Queryable } from "../db";
 import type { Hub } from "../realtime/hub";
 import * as calls from "../repositories/calls";
 import * as claims from "../repositories/claims";
+import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
+import * as spans from "../repositories/spans";
 import * as speakers from "../repositories/speakers";
+import * as stages from "../repositories/stages";
+import * as talks from "../repositories/talks";
 
 const SNAPSHOT_SEGMENTS = 200;
 const SNAPSHOT_CLAIMS = 50;
@@ -21,8 +25,13 @@ export async function buildSnapshot(db: Queryable, hub: Hub, session: Session): 
   // The total stops at the newest call in the snapshot. A call inserted after that read is in neither, and its live
   // event adds its cost once; a call in the snapshot is known to the page, which then adds nothing for its event.
   const costUsd = await calls.totalCost(db, session.id, recentCalls.at(-1)?.id ?? 0);
+  const current = latestSession?.type === "session" ? latestSession.data : session;
   return {
-    session: latestSession?.type === "session" ? latestSession.data : session,
+    session: current,
+    stage: current.stage_id ? await stages.get(db, current.stage_id) : null,
+    talks: current.stage_id ? await talks.forStage(db, current.stage_id) : [],
+    spans: await spans.list(db, session.id),
+    people: await people.forSession(db, session.id),
     segments: await segments.latest(db, session.id, SNAPSHOT_SEGMENTS),
     health: latestHealth?.type === "health" ? latestHealth.data : null,
     speakers: await speakers.list(db, session.id),

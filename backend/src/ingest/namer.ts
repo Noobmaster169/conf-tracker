@@ -6,10 +6,13 @@ import type { Queryable } from "../db";
 import { childLogger } from "../lib/logger";
 import { segmentsToLines } from "../pipeline/lines";
 import { selectNameWindow } from "../pipeline/naming";
+import { matchPerson, splitRole } from "../pipeline/people-match";
 import type { Hub } from "../realtime/hub";
+import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as speakers from "../repositories/speakers";
 import { createLoop, type Loop, type LoopFactory } from "./loop";
+import { loadStageContext, scheduledPeople } from "./stage-context";
 
 const log = childLogger({ module: "namer" });
 
@@ -40,9 +43,19 @@ export function createNamer(deps: NamerDeps): Loop {
       const recent = (await segments.list(db, sessionId, { from, to: last.t1 })).filter((s) => s.t1 <= upTo);
       const window = selectNameWindow(segmentsToLines(recent), roster, config);
       if (!window || window.t1 === answeredT1) return;
-      const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster);
+      const context = await loadStageContext(db, sessionId);
+      const scheduled = context ? scheduledPeople(context) : [];
+      const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster, scheduled.map((s) => s.line));
       hub.publish(sessionId, { type: "call", data: result.call });
-      for (const speaker of result.named) hub.publish(sessionId, { type: "speaker", data: speaker });
+      for (const speaker of result.named) {
+        // A named voice becomes a person: one the schedule expects when the name fits exactly one of them, otherwise
+        // whoever already goes by that name, or someone new. The label takes the person's spelling.
+        const known = speaker.name === null ? null : matchPerson(speaker.name, scheduled.map((s) => s.person));
+        const person = known ?? (speaker.name === null ? null : await people.upsertByName(db, { name: speaker.name, ...splitRole(speaker.role) }));
+        const linked = person ? await speakers.setPerson(db, sessionId, speaker.speaker_id, person) : null;
+        if (person) hub.publish(sessionId, { type: "person", data: person });
+        hub.publish(sessionId, { type: "speaker", data: linked ?? speaker });
+      }
       if (result.call.error === null) answeredT1 = window.t1;
     } catch (error) {
       log.error({ sessionId, err: error instanceof Error ? error.message : String(error) }, "naming tick failed");

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { Person, Span, Stage, Talk } from "./contracts-conference";
+
 /**
  * Every shape that crosses a boundary: what speech sends, what the api answers,
  * what SSE carries. The frontend mirrors these by hand in lib/api/. snake_case
@@ -94,6 +96,8 @@ export const Session = z.object({
   models: z.record(z.string(), z.string()),
   error: z.string().nullable(),
   created_at: z.string(),
+  stage_id: z.string().nullable(),
+  title: z.string().nullable(),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -128,6 +132,7 @@ export const Speaker = z.object({
   name_confidence: z.number().nullable(),
   name_quote: z.string().nullable(),
   name_call_id: z.number().nullable(),
+  person_id: z.number().nullable(),
 });
 export type Speaker = z.infer<typeof Speaker>;
 
@@ -166,6 +171,9 @@ export type Polarity = z.infer<typeof Polarity>;
 export const ClaimStatus = z.enum(["ok", "unverified", "duplicate"]);
 export type ClaimStatus = z.infer<typeof ClaimStatus>;
 
+export const ClaimKind = z.enum(["announcement", "metric", "roadmap", "opinion", "fact"]);
+export type ClaimKind = z.infer<typeof ClaimKind>;
+
 export const Claim = z.object({
   id: z.number(),
   session_id: z.string(),
@@ -179,6 +187,8 @@ export const Claim = z.object({
   quote: z.string(),
   quote_verified: z.boolean(),
   status: ClaimStatus,
+  kind: ClaimKind.nullable(),
+  importance: z.number().nullable(),
   created_at: z.string(),
 });
 export type Claim = z.infer<typeof Claim>;
@@ -217,7 +227,7 @@ export const ExtractConfig = z.object({
   extract_max_s: z.number().positive().default(120),
   dedupe_n: z.number().int().nonnegative().default(20),
   extract_model: z.string().min(1).default("sonnet"),
-  extract_prompt: z.string().regex(/^v\d+$/).default("v3"),
+  extract_prompt: z.string().regex(/^v\d+$/).default("v4"),
 });
 export type ExtractConfig = z.infer<typeof ExtractConfig>;
 
@@ -229,7 +239,7 @@ export const NameConfig = z.object({
   name_floor: z.number().min(0).max(1).default(0.7),
   // Measured on the claude -p rail: haiku thought for 40 to 105 s a call and named on weaker evidence; sonnet took 5 to 10 s.
   name_model: z.string().min(1).default("sonnet"),
-  name_prompt: z.string().regex(/^v\d+$/).default("v1"),
+  name_prompt: z.string().regex(/^v\d+$/).default("v2"),
 });
 export type NameConfig = z.infer<typeof NameConfig>;
 
@@ -297,6 +307,7 @@ export const CreateSessionBody = z
     file: z.string().min(1).optional(),
     speed: z.number().nonnegative().optional(),
     config: SessionConfig.optional(),
+    stage_id: z.uuid().optional(),
   })
   .refine((body) => (body.url === undefined) !== (body.file === undefined), { message: "exactly one of url or file" });
 export type CreateSessionBody = z.infer<typeof CreateSessionBody>;
@@ -304,6 +315,8 @@ export type CreateSessionBody = z.infer<typeof CreateSessionBody>;
 // A null config value removes the key from the original's config, so the replay falls back to the default.
 export const ReplayBody = z.object({ config: SessionConfig.optional(), speed: z.number().nonnegative().optional() });
 export type ReplayBody = z.infer<typeof ReplayBody>;
+
+export * from "./contracts-conference";
 
 export const Snapshot = z.object({
   session: Session,
@@ -314,6 +327,10 @@ export const Snapshot = z.object({
   calls: z.array(CallSummary),
   cost_usd: z.number(),
   seq: z.number(),
+  stage: Stage.nullable(),
+  talks: z.array(Talk),
+  spans: z.array(Span),
+  people: z.array(Person),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 
@@ -327,5 +344,7 @@ export const LiveEvent = z.discriminatedUnion("type", [
   z.object({ seq: z.number(), type: z.literal("speaker"), data: Speaker }),
   z.object({ seq: z.number(), type: z.literal("call"), data: CallSummary }),
   z.object({ seq: z.number(), type: z.literal("claims.new"), data: z.array(Claim) }),
+  z.object({ seq: z.number(), type: z.literal("span"), data: Span }),
+  z.object({ seq: z.number(), type: z.literal("person"), data: Person }),
 ]);
 export type LiveEvent = z.infer<typeof LiveEvent>;

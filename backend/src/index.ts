@@ -5,8 +5,11 @@ import { closePool, getPool } from "./db";
 import { extractorFactory } from "./ingest/extractor";
 import { namerFactory } from "./ingest/namer";
 import { createSessionRunner } from "./ingest/session-runner";
+import { createSummarizer } from "./ingest/summarizer";
+import { trackerFactory } from "./ingest/tracker";
 import { wsSpeechConnector } from "./ingest/speech-client";
 import { childLogger } from "./lib/logger";
+import { fetchVideoTitle } from "./lib/video-title";
 import { createHub } from "./realtime/hub";
 import { markOrphansDegraded } from "./repositories/sessions";
 
@@ -15,8 +18,14 @@ const log = childLogger({ module: "api" });
 const db = getPool();
 const hub = createHub(config.SSE_RING_CAPACITY);
 const llm = proxyLlmClient();
-const runner = createSessionRunner({ db, hub, connect: wsSpeechConnector(config.SPEECH_URL), loops: [extractorFactory(llm), namerFactory(llm)] });
-const app = createApp({ db, hub, runner });
+const summarize = createSummarizer({ db, llm });
+const runner = createSessionRunner({
+  db,
+  hub,
+  connect: wsSpeechConnector(config.SPEECH_URL),
+  loops: [trackerFactory(llm, summarize), extractorFactory(llm), namerFactory(llm)],
+});
+const app = createApp({ db, hub, runner, summarize, fetchTitle: fetchVideoTitle });
 
 // This process starts with an empty hub and runner, so no row it inherits as live can still be served.
 const orphans = await markOrphansDegraded(db);

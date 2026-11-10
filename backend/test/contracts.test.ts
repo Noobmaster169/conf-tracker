@@ -45,7 +45,7 @@ test("speech speaker events parse, and health without gpu_ms_diar defaults to 0"
 
 test("ExtractConfig fills every default from an empty session config and rejects bad values", () => {
   expect(ExtractConfig.parse({})).toEqual({
-    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v3",
+    extract: true, extract_interval_s: 30, context_tail_s: 60, extract_max_s: 120, dedupe_n: 20, extract_model: "sonnet", extract_prompt: "v4",
   });
   expect(ExtractConfig.parse({ speed: 2, extract_model: "haiku" }).extract_model).toBe("haiku");
   expect(ExtractConfig.safeParse({ extract_interval_s: 0 }).success).toBe(false);
@@ -56,7 +56,7 @@ test("ExtractConfig fills every default from an empty session config and rejects
 test("claim and call events parse and the snapshot carries both lists", () => {
   const claim = {
     id: 1, session_id: "s", call_id: 7, speaker_id: null, t0: null, t1: null, claim: "x", topics: ["fed"],
-    polarity: "none", quote: "x", quote_verified: false, status: "unverified", created_at: "2026-09-28T00:00:00.000Z",
+    polarity: "none", quote: "x", quote_verified: false, status: "unverified", kind: null, importance: null, created_at: "2026-09-28T00:00:00.000Z",
   };
   expect(Claim.parse(claim).status).toBe("unverified");
   expect(Claim.safeParse({ ...claim, polarity: "up" }).success).toBe(false);
@@ -71,7 +71,7 @@ test("claim and call events parse and the snapshot carries both lists", () => {
 });
 
 test("NameConfig fills every default from an empty session config and rejects bad values", () => {
-  expect(NameConfig.parse({})).toEqual({ name: true, name_interval_s: 60, name_window_s: 180, name_floor: 0.7, name_model: "sonnet", name_prompt: "v1" });
+  expect(NameConfig.parse({})).toEqual({ name: true, name_interval_s: 60, name_window_s: 180, name_floor: 0.7, name_model: "sonnet", name_prompt: "v2" });
   expect(NameConfig.safeParse({ name_floor: 1.5 }).success).toBe(false);
   expect(NameConfig.safeParse({ name_interval_s: 1 }).success).toBe(false);
   expect(NameConfig.safeParse({ name_prompt: "latest" }).success).toBe(false);
@@ -86,9 +86,9 @@ test("a proposal parses, and the snapshot needs the session cost", () => {
   expect(NameProposal.safeParse({ ...proposal, status: "maybe" }).success).toBe(false);
   const session = {
     id: "s", source_url: null, source_file: "x.wav", replay_of: null, video_id: null, status: "live", started_at: null, stopped_at: null,
-    config: {}, models: {}, error: null, created_at: "2026-09-29T00:00:00.000Z",
+    config: {}, models: {}, error: null, created_at: "2026-09-29T00:00:00.000Z", stage_id: null, title: null,
   };
-  const snapshot = { session, segments: [], health: null, speakers: [], claims: [], calls: [], seq: 0 };
+  const snapshot = { session, segments: [], health: null, speakers: [], claims: [], calls: [], seq: 0, stage: null, talks: [], spans: [], people: [] };
   expect(Snapshot.safeParse(snapshot).success).toBe(false);
   expect(Snapshot.parse({ ...snapshot, cost_usd: 0.25 }).cost_usd).toBe(0.25);
 });

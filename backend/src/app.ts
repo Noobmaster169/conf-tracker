@@ -3,15 +3,19 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { requireCaller } from "./auth";
 import type { Queryable } from "./db";
 import type { SessionRunner } from "./ingest/session-runner";
+import type { Summarize } from "./ingest/summarizer";
 import { RetryableError, TerminalError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
 import type { Hub } from "./realtime/hub";
+import { adminRouter } from "./routes/admin.routes";
 import { callsRouter } from "./routes/calls.routes";
 import { claimSearchRouter } from "./routes/claim-search.routes";
 import { claimsRouter } from "./routes/claims.routes";
+import { conferenceRouter } from "./routes/conference.routes";
 import { eventsRouter } from "./routes/events.routes";
 import { sessionsRouter } from "./routes/sessions.routes";
 import { speakersRouter } from "./routes/speakers.routes";
+import { stageControlRouter } from "./routes/stage-control.routes";
 import { topicsRouter } from "./routes/topics.routes";
 
 const log = childLogger({ module: "api" });
@@ -20,6 +24,8 @@ export interface AppDeps {
   db: Queryable;
   hub: Hub;
   runner: SessionRunner;
+  summarize?: Summarize;
+  fetchTitle?: (url: string) => Promise<string | null>;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -39,11 +45,14 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(requireCaller);
   app.use("/sessions", sessionsRouter(deps));
   app.use("/sessions", eventsRouter(deps));
+  app.use("/sessions", stageControlRouter(deps));
   app.use("/sessions", speakersRouter(deps));
   app.use("/sessions", claimsRouter(deps));
   app.use("/sessions", topicsRouter(deps));
   app.use("/calls", callsRouter(deps));
   app.use("/claims", claimSearchRouter(deps));
+  app.use(conferenceRouter(deps));
+  app.use(adminRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.

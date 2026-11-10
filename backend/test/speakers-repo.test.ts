@@ -18,7 +18,7 @@ test("upsert creates a speaker, then widens its seen range and keeps talk time u
     const s = await newSession(tx);
     expect(await speakers.upsert(tx, s.id, { speakerId: "S1", firstSeenT: 5, lastSeenT: 5 })).toEqual({
       speaker_id: "S1", first_seen_t: 5, last_seen_t: 5, talk_s: 0, merged_into: null,
-      name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null,
+      name: null, role: null, name_confidence: null, name_quote: null, name_call_id: null, person_id: null,
     });
     await speakers.upsert(tx, s.id, { speakerId: "S1", firstSeenT: 8, lastSeenT: 20, talkS: 12.5 });
     const again = await speakers.upsert(tx, s.id, { speakerId: "S1", firstSeenT: 3, lastSeenT: 10 });

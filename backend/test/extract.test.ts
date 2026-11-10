@@ -39,7 +39,7 @@ test("a verified quote gives the claim its speaker and time from the line, and e
     expect(llm.requests[0]?.user).toBe("## already extracted\n(none)\n\n## context (already handled, for reference only)\n[00:00 S8] Welcome back.\n\n## new lines (extract from these)\n[00:30 S11] The Fed will cut in December, I think\n[00:36 --] and oil is heading to ninety dollars.");
     const stored = await calls.get(tx, result.call.id);
     expect(stored?.input).toBe(llm.requests[0]?.user);
-    expect(stored?.parsed).toEqual(JSON.parse(answer([fed, { claim: "Oil will reach 90 dollars.", topics: ["oil"], polarity: "bullish", quote: "oil is heading to ninety dollars." }])));
+    expect(stored?.parsed).toMatchObject(JSON.parse(answer([fed, { claim: "Oil will reach 90 dollars.", topics: ["oil"], polarity: "bullish", quote: "oil is heading to ninety dollars." }])));
     expect(await claims.forCall(tx, result.call.id)).toEqual(result.claims);
   });
 });
@@ -49,7 +49,7 @@ test("an unverifiable quote is stored unverified with no speaker and no time; a 
     const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     const prior: Claim = {
       id: 1, session_id: s.id, call_id: 1, speaker_id: "S11", t0: 30, t1: 36, claim: fed.claim, topics: fed.topics, polarity: "bearish",
-      quote: fed.quote, quote_verified: true, status: "ok", created_at: "2026-09-28T00:00:00.000Z",
+      quote: fed.quote, quote_verified: true, status: "ok", kind: null, importance: null, created_at: "2026-09-28T00:00:00.000Z",
     };
     const llm = fakeLlm(answer([
       { ...fed, quote: "the Fed will cut in December" },
