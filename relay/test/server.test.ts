@@ -34,6 +34,9 @@ describe("relay server", () => {
       IDLE_CLOSE_MS: 60_000,
       MAX_VIEWERS: 100,
       KEEPALIVE_MS: 15_000,
+      UPSTREAM_STALL_MS: 45_000,
+      MAX_BUFFERED_BYTES: 128_000,
+      FAILED_HOLD_MS: 60_000,
       ...overrides,
     });
     await new Promise<void>((resolve) => relay.listen(0, "127.0.0.1", resolve));
@@ -155,6 +158,52 @@ describe("relay server", () => {
     expect(before.channels).toEqual([expect.objectContaining({ sessionId: "s1", viewers: 2, state: "open", latest: 4 })]);
     a.close();
     await expect.poll(async () => (await health()).viewers).toBe(1);
+  });
+
+  it("refuses a reconnect to a video the api refused, so the browser falls back (review I-1)", async () => {
+    up.status = 401;
+    await start();
+    const first = await connect(`after=4&ticket=${ticket()}`);
+    expect(first.status).toBe(200);
+    await expect.poll(async () => (await health()).channels.length).toBe(0);
+    const again = await connect(`after=4&ticket=${ticket()}`);
+    expect(again.status).toBe(502);
+    expect(up.requests).toHaveLength(1);
+  });
+
+  it("drops a viewer that stops reading before it costs more than MAX_BUFFERED_BYTES (review I-3)", async () => {
+    await start({ MAX_BUFFERED_BYTES: 64_000 });
+    const { connect: rawConnect } = await import("node:net");
+    const port = Number(new URL(base).port);
+    const socket = rawConnect(port, "127.0.0.1");
+    socket.write(`GET /sessions/s1/events?after=4&ticket=${ticket()} HTTP/1.1\r\nHost: x\r\n\r\n`);
+    socket.pause();
+    await until(() => up.open() === 1);
+    for (let s = 5; s < 45; s++) up.send(s, "segment", 500_000);
+    await expect.poll(async () => (await health()).viewers, { timeout: 5000 }).toBe(0);
+    socket.destroy();
+  });
+
+  it("never writes its own pings into a passthrough, where they could split a frame (review I-5)", async () => {
+    await start({ KEEPALIVE_MS: 20 });
+    await connect(`after=10&ticket=${ticket()}`);
+    await until(() => up.open() === 1);
+    const behind = await connect(`ticket=${ticket()}`, { "last-event-id": "1" });
+    await until(() => up.open() === 2);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(behind.text()).not.toContain(": ping");
+  });
+
+  it("answers the CORS preflight a reconnect with Last-Event-ID may send (review I-6)", async () => {
+    await start();
+    const res = await fetch(`${base}/sessions/s1/events`, {
+      method: "OPTIONS",
+      headers: { origin: "https://app.example", "access-control-request-method": "GET", "access-control-request-headers": "last-event-id" },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    expect(res.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("last-event-id");
+    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
   });
 
   it("answers 404 for any other path", async () => {

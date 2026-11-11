@@ -1,5 +1,6 @@
 import { Ring, type RelayEvent } from "./ring";
 import { parseFrames } from "./sse";
+import { isPermanent, readStream, upstreamHeaders } from "./upstream";
 
 export interface ChannelOptions {
   sessionId: string;
@@ -11,6 +12,8 @@ export interface ChannelOptions {
   idleCloseMs: number;
   minBackoffMs?: number;
   maxBackoffMs?: number;
+  /** Silence (no event, no ping) after which the upstream is treated as dead and reconnected. */
+  upstreamStallMs?: number;
   /** Called once when the channel ends on its own (idle, or the api refused it for good). */
   onClosed: () => void;
   fetchImpl?: typeof fetch;
@@ -22,9 +25,6 @@ interface Viewer {
   /** The newest seq this viewer has. */
   pos: number;
 }
-
-/** The api's answers that no retry will change: wrong secret, or no such video. */
-const PERMANENT = new Set([401, 403, 404]);
 
 /**
  * One video's stream from the api, shared by every viewer of it. Holds a single upstream connection, resumes it
@@ -38,10 +38,12 @@ export class Channel {
   #retry: NodeJS.Timeout | null = null;
   #idle: NodeJS.Timeout | null = null;
   #backoff: number;
+  /** After the api's seq space went backwards (it restarted), the old seqs up to here mean nothing any more. */
+  #regressedAbove = -1;
   #state: "connecting" | "open" | "backoff" | "failed" | "closed" = "connecting";
 
   constructor(opts: ChannelOptions) {
-    this.#opts = { minBackoffMs: 1000, maxBackoffMs: 30_000, fetchImpl: fetch, ...opts };
+    this.#opts = { minBackoffMs: 1000, maxBackoffMs: 30_000, upstreamStallMs: 45_000, fetchImpl: fetch, ...opts };
     this.#ring = new Ring(opts.ringCapacity, opts.after);
     this.#backoff = this.#opts.minBackoffMs;
     void this.#connect();
@@ -60,6 +62,9 @@ export class Channel {
   }
 
   join(after: number, write: Write, end: () => void): "joined" | "out-of-ring" {
+    // A position past the ring but within the old seq space comes from before an api restart: the passthrough
+    // gets that viewer the api's snapshot. Past the ring otherwise is a page a moment ahead of us, and joins.
+    if (after > this.#ring.latest && after <= this.#regressedAbove) return "out-of-ring";
     const backlog = this.#ring.since(after);
     if (backlog === null) return "out-of-ring";
     if (this.#idle) clearTimeout(this.#idle);
@@ -101,6 +106,7 @@ export class Channel {
   #deliver(event: RelayEvent): void {
     if (event.type === "snapshot") {
       // The api lost our place (its ring moved on, or it restarted): everything before this is gone.
+      if (event.seq < this.#ring.latest) this.#regressedAbove = Math.max(this.#regressedAbove, this.#ring.latest);
       this.#ring.reset(event.seq);
       for (const [write, viewer] of this.#viewers) {
         write(event.raw);
@@ -128,12 +134,18 @@ export class Channel {
     this.#abort = abort;
     const { upstreamUrl, sessionId, secret } = this.#opts;
     const url = `${upstreamUrl.replace(/\/+$/, "")}/sessions/${encodeURIComponent(sessionId)}/events?after=${this.#ring.latest}`;
+    // The watchdog in readStream starts with the body; this one covers an answer that never comes at all.
+    let timedOut = false;
+    const connectTimer = setTimeout(() => {
+      timedOut = true;
+      abort.abort();
+    }, this.#opts.upstreamStallMs);
     try {
       const response = await this.#opts.fetchImpl(url, {
-        headers: { authorization: `Bearer ${secret}`, accept: "text/event-stream", "ngrok-skip-browser-warning": "1" },
+        headers: upstreamHeaders(secret),
         signal: abort.signal,
-      });
-      if (PERMANENT.has(response.status)) {
+      }).finally(() => clearTimeout(connectTimer));
+      if (isPermanent(response)) {
         await response.body?.cancel().catch(() => {});
         this.#finish("failed");
         return;
@@ -142,17 +154,12 @@ export class Channel {
       this.#state = "open";
       this.#backoff = this.#opts.minBackoffMs;
       const parse = parseFrames();
-      const decoder = new TextDecoder();
-      const reader = response.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (const event of parse(decoder.decode(value, { stream: true }))) this.#deliver(event);
-      }
+      await readStream(response.body, this.#opts.upstreamStallMs, (text) => parse(text).forEach((event) => this.#deliver(event)));
     } catch {
-      // A drop, a refused connection or an abort: the retry below decides which.
+      // A drop, a refused connection or an abort: the retry below decides which. A stall ends the read
+      // without an abort, so it retries like a drop.
     }
-    if (abort.signal.aborted || this.#ended()) return;
+    if ((abort.signal.aborted && !timedOut) || this.#ended()) return;
     this.#state = "backoff";
     this.#retry = setTimeout(() => void this.#connect(), this.#backoff);
     this.#backoff = Math.min(this.#backoff * 2, this.#opts.maxBackoffMs);

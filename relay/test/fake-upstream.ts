@@ -7,14 +7,19 @@ export interface FakeUpstream {
   requests: { path: string; after: string | null; headers: IncomingMessage["headers"] }[];
   /** The status the next requests get; 200 opens a stream. */
   status: number;
-  send(seq: number, type?: string): void;
+  /** Headers sent with a non-200 answer, e.g. ngrok's own error code. */
+  errorHeaders: Record<string, string>;
+  /** Whether a 200 stream starts with a comment; off, the stream is silent until send(). */
+  greet: boolean;
+  send(seq: number, type?: string, padBytes?: number): void;
   /** Cuts every open stream, as a dropped tunnel would. */
   drop(): void;
   open(): number;
   close(): Promise<void>;
 }
 
-export const frame = (seq: number, type = "segment") => `id: ${seq}\nevent: ${type}\ndata: ${JSON.stringify({ seq, type, data: {} })}\n\n`;
+export const frame = (seq: number, type = "segment", padBytes = 0) =>
+  `id: ${seq}\nevent: ${type}\ndata: ${JSON.stringify({ seq, type, data: padBytes ? { pad: "x".repeat(padBytes) } : {} })}\n\n`;
 
 export async function fakeUpstream(): Promise<FakeUpstream> {
   const streams = new Set<ServerResponse>();
@@ -22,8 +27,10 @@ export async function fakeUpstream(): Promise<FakeUpstream> {
     url: "",
     requests: [],
     status: 200,
-    send(seq, type = "segment") {
-      for (const res of streams) res.write(frame(seq, type));
+    errorHeaders: {},
+    greet: true,
+    send(seq, type = "segment", padBytes = 0) {
+      for (const res of streams) res.write(frame(seq, type, padBytes));
     },
     drop() {
       for (const res of streams) res.socket?.destroy();
@@ -40,11 +47,11 @@ export async function fakeUpstream(): Promise<FakeUpstream> {
     const url = new URL(req.url ?? "/", "http://x");
     fake.requests.push({ path: url.pathname, after: url.searchParams.get("after"), headers: req.headers });
     if (fake.status !== 200) {
-      res.writeHead(fake.status, { "content-type": "application/json" }).end("{}");
+      res.writeHead(fake.status, { "content-type": "application/json", ...fake.errorHeaders }).end("{}");
       return;
     }
     res.writeHead(200, { "content-type": "text/event-stream" });
-    res.write(": open\n\n");
+    if (fake.greet) res.write(": open\n\n");
     streams.add(res);
     res.on("close", () => streams.delete(res));
   });

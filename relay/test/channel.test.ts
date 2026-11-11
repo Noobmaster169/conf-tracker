@@ -149,6 +149,46 @@ describe("Channel", () => {
     await until(() => ch.state === "open");
   });
 
+  it("retries ngrok's own 404 (endpoint offline) instead of giving up (review I-1)", async () => {
+    up.status = 404;
+    up.errorHeaders = { "ngrok-error-code": "ERR_NGROK_3200" };
+    const ch = open(4);
+    const a = viewer();
+    ch.join(4, a.write, a.end);
+    await until(() => up.requests.length >= 2);
+    expect(a.ended()).toBe(false);
+    up.status = 200;
+    await until(() => ch.state === "open");
+  });
+
+  it("reconnects when the upstream goes silent, pings included (review I-2)", async () => {
+    up.greet = false;
+    const ch = open(4, { upstreamStallMs: 100 });
+    ch.join(4, viewer().write, () => {});
+    await until(() => up.requests.length >= 2, 1000);
+    expect(up.requests[1].after).toBe("4");
+    expect(ch.state).not.toBe("failed");
+  });
+
+  it("sends a viewer from before an api restart to the passthrough, not past every new event (review I-4)", async () => {
+    const ch = open(4);
+    const a = viewer();
+    ch.join(4, a.write, a.end);
+    await until(() => up.open() === 1);
+    [5, 6, 7].forEach((s) => up.send(s));
+    await until(() => a.got.length === 3);
+    up.send(0, "snapshot");
+    up.send(1);
+    await until(() => a.got.length === 5);
+    expect(ch.join(7, viewer().write, () => {})).toBe("out-of-ring");
+    expect(ch.join(1, viewer().write, () => {})).toBe("joined");
+    // Ahead of the new ring yet inside the old seq space: indistinguishable from a stale position, so the safe answer.
+    expect(ch.join(2, viewer().write, () => {})).toBe("out-of-ring");
+    up.send(8);
+    await until(() => a.got.length === 6);
+    expect(ch.join(8, viewer().write, () => {})).toBe("joined");
+  });
+
   it("closes its upstream a while after the last viewer leaves, unless one comes back", async () => {
     const ch = open(4, { idleCloseMs: 50 });
     const a = viewer();
