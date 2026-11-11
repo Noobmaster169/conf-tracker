@@ -160,5 +160,22 @@ export function sessionsRouter({ db, hub, runner, fetchTitle }: SessionsDeps): R
     }
   });
 
+  router.post("/:id/resume", async (req, res, next) => {
+    try {
+      const session = await sessions.get(db, req.params.id);
+      if (!session) {
+        res.status(404).json({ error: "session not found" });
+        return;
+      }
+      if (session.status !== "degraded" && session.status !== "stopped") {
+        res.status(409).json({ error: "video is already running" });
+        return;
+      }
+      res.status(201).json(await runner.resume(session.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }

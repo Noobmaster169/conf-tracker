@@ -28,14 +28,16 @@ A prompt registered through the api lives in the database. Also commit it as
 
 ## What a restart costs
 
-A video's transcript, voices and timeline are fed by one long connection from the api to speech. Nothing resumes it.
-When the api restarts, every running video becomes `degraded` and stays that way; starting it again from Admin makes a
-**new** video that transcribes the stream from its first second. So during a conference day:
+A video's transcript, voices and timeline are fed by one long connection from the api to speech. When the api or speech
+restarts, that connection drops and the api opens it again from the second it stopped, on the **same** video, catching
+up through YouTube's rewind. The admin page shows the video as `recovering` meanwhile. So during a conference day:
 
-- Do not force a backend deploy (`ops/ct job deploy-now`, or `[deploy-now]` in the commit message) unless the bug is
-  worse than losing the running videos. Say so to the user first.
+- A backend deploy still costs every running video a short catch-up, so the box holds it back while one runs. Do not
+  force it (`ops/ct job deploy-now`, or `[deploy-now]` in the commit message) unless the bug is worth that. Say so to
+  the user first.
 - Prefer the runtime rungs above. They exist so that a live day needs no restart.
-- `speech-restart` ends the videos of this stack **and of yt-stream**, which shares the service.
+- `speech-restart` costs the videos of this stack **and of yt-stream**, which shares the service, a catch-up.
+- A `degraded` or `stopped` video can be resumed: `ops/ct post /sessions/ID/resume`, or Resume in Admin.
 - The model proxy can restart mid-video: calls fail for some seconds and the next run picks up where it was.
 
 ## Shipping code

@@ -53,23 +53,6 @@ test("markStarted and setStatus reject an unknown id", async () => {
   });
 });
 
-test("markOrphansDegraded degrades starting and live sessions and leaves stopped ones", async () => {
-  await inRollback(async (tx) => {
-    const starting = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
-    const live = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
-    await sessions.markStarted(tx, live.id, { startedAt: "2026-09-23T10:00:00.000Z", models: {} });
-    const stopped = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
-    await sessions.setStatus(tx, stopped.id, "stopped");
-    // Other suites commit rows to this database, so the returned list is checked by id, never by length.
-    const ids = (await sessions.markOrphansDegraded(tx)).map((s) => s.id);
-    expect(ids).toContain(starting.id);
-    expect(ids).toContain(live.id);
-    expect(ids).not.toContain(stopped.id);
-    expect((await sessions.get(tx, starting.id))?.status).toBe("degraded");
-    expect((await sessions.get(tx, stopped.id))?.status).toBe("stopped");
-  });
-});
-
 test("setError stops the session, keeps the message and rejects an unknown id", async () => {
   await inRollback(async (tx) => {
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });

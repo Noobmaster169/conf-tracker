@@ -736,6 +736,10 @@ test("resume refuses a video that is not degraded or stopped; resumeAll picks up
     const recovering = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await sessions.markStarted(tx, live.id, { startedAt: "2026-11-16T09:00:00.000Z", models: {} });
     await sessions.setRecovering(tx, recovering.id);
+    const degraded = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setStatus(tx, degraded.id, "degraded");
+    const stopped = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setStatus(tx, stopped.id, "stopped");
     await tx.query("update sessions set status = 'stopped' where status in ('starting', 'live', 'recovering') and id not in ($1, $2)", [live.id, recovering.id]);
 
     await expect(runner.resume(live.id)).rejects.toThrow(/degraded or stopped/);
@@ -746,8 +750,30 @@ test("resume refuses a video that is not degraded or stopped; resumeAll picks up
     await until(() => speech.connections.length === 2, "two legs");
     await Promise.all(speech.connections.map((c) => c.done));
     expect(runner.live().sort()).toEqual([live.id, recovering.id].sort());
+    expect((await sessions.get(tx, degraded.id))?.status).toBe("degraded");
+    expect((await sessions.get(tx, stopped.id))?.status).toBe("stopped");
     await runner.stop(live.id);
     await runner.stop(recovering.id);
+  });
+});
+
+test("resumeAll revives videos concurrently: a connect that never answers does not hold the others", async () => {
+  await inRollback(async (tx) => {
+    const speech = scriptedSpeech([{ events: [started] }]);
+    let calls = 0;
+    const connect: typeof speech.connector = (...args) => {
+      calls += 1;
+      return calls === 1 ? new Promise(() => {}) : speech.connector(...args);
+    };
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect, now: fakeClock().now, setTimer: fakeClock().setTimer });
+    await tx.query("update sessions set status = 'stopped' where status in ('starting', 'live', 'recovering')");
+    const a = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    const b = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setRecovering(tx, a.id);
+    await sessions.setRecovering(tx, b.id);
+    void runner.resumeAll();
+    await until(() => speech.connections.length === 1, "the second video's leg opens while the first connect hangs");
+    expect(calls).toBe(2);
   });
 });
 

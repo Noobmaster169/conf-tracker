@@ -112,14 +112,6 @@ export async function running(db: Queryable): Promise<Session[]> {
   return rows.map(toSession);
 }
 
-/** Rows a previous process left mid-flight. Nothing serves them any more, so they are degraded, not live. */
-export async function markOrphansDegraded(db: Queryable): Promise<Session[]> {
-  const { rows } = await db.query<Row>(
-    `update sessions set status = 'degraded' where status in ('starting', 'live') returning ${COLUMNS}`,
-  );
-  return rows.map(toSession);
-}
-
 /** Stops the session and keeps why, so an error end is never a black box. */
 export async function setError(db: Queryable, id: string, error: string): Promise<Session> {
   const { rows } = await db.query<Row>(

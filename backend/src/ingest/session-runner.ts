@@ -467,9 +467,10 @@ export function createSessionRunner(deps: {
       return revive(session, now());
     },
     async resumeAll() {
-      const ids: string[] = [];
-      for (const session of await sessions.running(db)) {
-        if (!videos.has(session.id)) {
+      // Concurrently: one slow speech connect must not hold the other videos back.
+      const results = await Promise.allSettled(
+        (await sessions.running(db)).map(async (session) => {
+          if (videos.has(session.id)) return session.id;
           // Left by a previous process: its legs died with it. Recovering keeps counting from when it first broke.
           try {
             await legs.endOpen(db, session.id, "api restarted");
@@ -481,12 +482,12 @@ export function createSessionRunner(deps: {
             await revive(session, since);
           } catch (error) {
             log.error({ sessionId: session.id, err: errorText(error) }, "resuming a video left running failed");
-            continue;
+            throw error;
           }
-        }
-        ids.push(session.id);
-      }
-      return ids;
+          return session.id;
+        }),
+      );
+      return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
     },
     live: () => [...videos.keys()],
   };

@@ -13,7 +13,6 @@ import { fetchVideoTitle } from "./lib/video-title";
 import { createHub } from "./realtime/hub";
 import { setOverrides } from "./agents/prompts/registry";
 import * as promptOverrides from "./repositories/prompt-overrides";
-import { markOrphansDegraded } from "./repositories/sessions";
 
 const log = childLogger({ module: "api" });
 
@@ -31,11 +30,12 @@ const runner = createSessionRunner({
 });
 const app = createApp({ db, hub, runner, summarize, fetchTitle: fetchVideoTitle });
 
-// This process starts with an empty hub and runner, so no row it inherits as live can still be served.
-const orphans = await markOrphansDegraded(db);
-if (orphans.length > 0) log.info({ count: orphans.length }, "marked sessions orphaned by a restart as degraded");
-
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT, speech: config.SPEECH_URL, proxy: config.LLM_PROXY_URL }, "api listening"));
+// Videos a previous process left running are fed again from the second they stopped. Not awaited: listening comes first.
+runner
+  .resumeAll()
+  .then((ids) => log.info({ count: ids.length }, "resumed videos a restart left running"))
+  .catch((error) => log.error({ err: error instanceof Error ? error.message : String(error) }, "resuming videos a restart left running failed"));
 
 async function shutdown(): Promise<void> {
   try {

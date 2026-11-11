@@ -305,3 +305,19 @@ test("replay refuses a bad merged config with the key named", async () => {
   expect(refused.status).toBe(400);
   expect(refused.body.error).toMatch(/extract prompt v99/);
 });
+
+test("POST /sessions/:id/resume picks up a stopped video, 409 while it runs, 404 for an unknown or malformed id", async () => {
+  const created = await request(app).post("/sessions").set(auth).send({ url: URL });
+  const id = created.body.id;
+  await request(app).post(`/sessions/${id}/stop`).set(auth);
+  const resumed = await request(app).post(`/sessions/${id}/resume`).set(auth);
+  expect(resumed.status).toBe(201);
+  expect(resumed.body.id).toBe(id);
+  const again = await request(app).post(`/sessions/${id}/resume`).set(auth);
+  expect(again.status).toBe(409);
+  expect(again.body).toEqual({ error: "video is already running" });
+  expect((await request(app).post("/sessions/00000000-0000-0000-0000-000000000000/resume").set(auth)).status).toBe(404);
+  expect((await request(app).post("/sessions/nope/resume").set(auth)).status).toBe(404);
+  expect((await request(app).post(`/sessions/${id}/resume`)).status).toBe(401);
+  await request(app).post(`/sessions/${id}/stop`).set(auth);
+});
