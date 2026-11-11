@@ -18,7 +18,7 @@ the model proxy and speech answer, how many model calls failed in the last hour,
 | A threshold or model (`name_floor`, `track_switch_confidence`, `extract_model`, ...) | The same two `patch` calls. `ops/ct get /ops/config` lists every key and its default | No |
 | Something looks wrong and you do not know why | `ops/ct logs 200 warn`, `ops/ct sql "select ..."`, `ops/ct get /calls/ID`, `ops/ct box` | No |
 | The dashboard (anything under `frontend/`) | Commit, push | No video is touched |
-| Backend code (anything under `backend/`) | Commit, push, `ops/ct wait-deploy` | **Yes: an api restart ends every running video.** So the box holds the deploy back while one runs and ships it when none does |
+| Backend code (anything under `backend/`) | Commit, push, `ops/ct wait-deploy` | **Yes: an api restart costs each running video a short catch-up.** So the box holds the deploy back while one runs and ships it when none does |
 | A container is stuck, a token expired, the disk is full | `ops/ct verbs`, then `ops/ct job ...` | Depends on the verb; it says |
 | Anything else on the box | A one-shot script, `deploy/ops.d/README.md` | Whatever the script does |
 
@@ -30,7 +30,7 @@ A prompt registered through the api lives in the database. Also commit it as
 
 A video's transcript, voices and timeline are fed by one long connection from the api to speech. When the api or speech
 restarts, that connection drops and the api opens it again from the second it stopped, on the **same** video, catching
-up through YouTube's rewind. The admin page shows the video as `recovering` meanwhile. So during a conference day:
+up through YouTube's rewind (on a stream with rewind; on one without, the missed stretch is filled from the recording after the stream ends). The admin page shows the video as `recovering` meanwhile. So during a conference day:
 
 - A backend deploy still costs every running video a short catch-up, so the box holds it back while one runs. Do not
   force it (`ops/ct job deploy-now`, or `[deploy-now]` in the commit message) unless the bug is worth that. Say so to
