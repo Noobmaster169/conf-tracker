@@ -19,17 +19,46 @@ const seg = (tx: Parameters<typeof sessions.create>[0], id: string, t0: number, 
 const win = (tx: Parameters<typeof sessions.create>[0], id: string, t0: number, t1: number) =>
   diarization.insertWindow(tx, id, { t0, t1, gpuMs: 1, matches: [], turns: [{ t0, t1, speaker_id: "S1" }] });
 
-test("resume point is the segment end, lowered to the window end, rounded down to 0.5; 0 when empty", async () => {
+const ends = async (tx: Parameters<typeof sessions.create>[0], id: string) =>
+  (await segments.list(tx, id, {})).map((x) => [x.t0, x.t1]);
+
+test("resume point is 0 for an empty video", async () => {
   await inRollback(async (tx) => {
     const s = await newSession(tx);
     expect(await resumePoint(tx, s.id)).toBe(0);
+  });
+});
+
+test("an off-grid segment end rounds down into the segment, so the line is re-read whole", async () => {
+  await inRollback(async (tx) => {
+    const s = await newSession(tx);
     await seg(tx, s.id, 100, 120);
     await seg(tx, s.id, 120, 130.2);
+    const r = await resumePoint(tx, s.id);
+    expect(r).toBe(120);
+    await truncateAfter(tx, s.id, r);
+    expect(await ends(tx, s.id)).toEqual([[100, 120]]);
+  });
+});
+
+test("an on-grid end is kept as is", async () => {
+  await inRollback(async (tx) => {
+    const s = await newSession(tx);
+    await seg(tx, s.id, 100, 130);
     expect(await resumePoint(tx, s.id)).toBe(130);
+  });
+});
+
+test("overlapping segments push the resume point back until none straddles it", async () => {
+  await inRollback(async (tx) => {
+    const s = await newSession(tx);
+    await seg(tx, s.id, 100, 112.3);
+    await seg(tx, s.id, 110, 125);
     await win(tx, s.id, 90, 120);
-    expect(await resumePoint(tx, s.id)).toBe(120);
-    await win(tx, s.id, 100, 140);
-    expect(await resumePoint(tx, s.id)).toBe(130);
+    const r = await resumePoint(tx, s.id);
+    expect(r).toBe(100);
+    await truncateAfter(tx, s.id, r);
+    expect(await ends(tx, s.id)).toEqual([]);
   });
 });
 

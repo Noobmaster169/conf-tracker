@@ -4,7 +4,7 @@ const floorHalf = (t: number): number => Math.floor(t * 2) / 2;
 
 /**
  * Where the next leg starts: the end of the last stored segment, lowered to the end of the last
- * diarization window when the video has any and that is smaller, rounded down to a frame (0.5 s). 0 when empty.
+ * diarization window when the video has any and that is smaller, rounded down to a frame (0.5 s) and then lowered until no segment straddles it. 0 when empty.
  */
 export async function resumePoint(db: Queryable, sessionId: string): Promise<number> {
   const { rows } = await db.query<{ seg: number | null; win: number | null }>(
@@ -14,14 +14,18 @@ export async function resumePoint(db: Queryable, sessionId: string): Promise<num
   );
   const { seg, win } = rows[0]!;
   if (seg === null) return 0;
-  let r = win !== null && win < seg ? win : seg;
-  // Never inside a stored segment: the next leg re-reads from r, and a segment cut at r would lose its start.
-  const { rows: straddle } = await db.query<{ t0: number | null }>(
-    "select min(t0) as t0 from segments where session_id = $1 and t0 < $2 and t1 > $2",
-    [sessionId, r],
-  );
-  if (straddle[0]!.t0 !== null) r = straddle[0]!.t0;
-  return floorHalf(r);
+  let r = floorHalf(win !== null && win < seg ? win : seg);
+  // Never inside a stored segment: the next leg re-reads from r, so a segment cut at r would lose its start.
+  // Lowering can land inside another (overlapping) segment, so repeat until none straddles.
+  for (;;) {
+    const { rows: straddle } = await db.query<{ t0: number | null }>(
+      "select min(t0) as t0 from segments where session_id = $1 and t0 < $2 and t1 > $2",
+      [sessionId, r],
+    );
+    const t0 = straddle[0]!.t0;
+    if (t0 === null) return r;
+    r = floorHalf(t0);
+  }
 }
 
 /**
