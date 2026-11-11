@@ -31,14 +31,14 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 /** The speech session id of a gap's leg: one per gap, so a retry reuses it and two gaps never share one. */
 export const gapSpeechId = (gap: Gap) => `${gap.session_id}-g${gap.id}`;
 
-/** What is stored inside a gap: nothing but a previous try's leftovers, cleared before a new try. Nothing outside it. */
+/** What is stored inside a gap: nothing but a previous try's leftovers, cleared before a new try. Only rows wholly inside it. */
 async function clearInside(db: Queryable, sessionId: string, t0: number, t1: number): Promise<void> {
-  await db.query("delete from segments where session_id = $1 and t1 > $2 and t0 < $3", [sessionId, t0, t1]);
+  await db.query("delete from segments where session_id = $1 and t0 >= $2 and t1 <= $3", [sessionId, t0, t1]);
   await db.query(
-    "delete from turns where session_id = $1 and window_id in (select id from diar_windows where session_id = $1 and t1 > $2 and t0 < $3)",
+    "delete from turns where session_id = $1 and window_id in (select id from diar_windows where session_id = $1 and t0 >= $2 and t1 <= $3)",
     [sessionId, t0, t1],
   );
-  await db.query("delete from diar_windows where session_id = $1 and t1 > $2 and t0 < $3", [sessionId, t0, t1]);
+  await db.query("delete from diar_windows where session_id = $1 and t0 >= $2 and t1 <= $3", [sessionId, t0, t1]);
 }
 
 /**

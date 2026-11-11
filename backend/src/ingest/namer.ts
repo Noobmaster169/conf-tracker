@@ -32,26 +32,26 @@ export interface NamerDeps {
 
 /**
  * One naming run: when someone in the few minutes up to `upTo` has no name, the model is asked who they are. The same
- * window is never asked about twice by one run function.
+ * window is never asked about twice by one run function. False when the model call (or a write after it) failed.
  */
-export function createNameRun(deps: Omit<NamerDeps, "resumeAt">): (upTo: number) => Promise<void> {
+export function createNameRun(deps: Omit<NamerDeps, "resumeAt">): (upTo: number) => Promise<boolean> {
   const { db, hub, sessionId, llm } = deps;
   // Loaded here too, so a missing prompt version refuses the session before anything starts.
   const initialPrompt = { ...loadPrompt("name", deps.config.name_prompt), model: deps.config.name_model };
   // Boundaries that pass with no new speech would each ask about the same window again; one answer per window.
   let answeredT1: number | null = null;
 
-  async function run(upTo: number): Promise<void> {
+  async function run(upTo: number): Promise<boolean> {
     try {
       const last = await segments.lastUpTo(db, sessionId, upTo);
-      if (!last) return;
+      if (!last) return true;
       const config = await liveConfig(db, sessionId, NameConfig, deps.config);
       const prompt = livePrompt("name", config.name_prompt, config.name_model, initialPrompt);
       const from = Math.max(0, last.t1 - config.name_window_s - SEGMENT_MARGIN_S);
       const roster = await speakers.list(db, sessionId);
       const recent = (await segments.list(db, sessionId, { from, to: last.t1 })).filter((s) => s.t1 <= upTo);
       const window = selectNameWindow(segmentsToLines(recent), roster, config);
-      if (!window || window.t1 === answeredT1) return;
+      if (!window || window.t1 === answeredT1) return true;
       const context = await loadStageContext(db, sessionId, window.t1);
       const scheduled = context ? scheduledPeople(context) : [];
       const result = await runNaming({ db, llm, sessionId, prompt, floor: config.name_floor }, window, roster, scheduled.map((s) => s.line), scheduled.map((s) => s.person.name));
@@ -65,9 +65,12 @@ export function createNameRun(deps: Omit<NamerDeps, "resumeAt">): (upTo: number)
         if (person) hub.publish(sessionId, { type: "person", data: person });
         hub.publish(sessionId, { type: "speaker", data: linked ?? speaker });
       }
-      if (result.call.error === null) answeredT1 = window.t1;
+      if (result.call.error !== null) return false;
+      answeredT1 = window.t1;
+      return true;
     } catch (error) {
       log.error({ sessionId, err: error instanceof Error ? error.message : String(error) }, "naming tick failed");
+      return false;
     }
   }
 
@@ -79,7 +82,7 @@ export function createNamer(deps: NamerDeps): Loop {
   const run = createNameRun(deps);
   // No final run: a name found after the stop would help nobody, and it would cost a call.
   // Only the newest window is worth naming: a replay faster than the model would otherwise name voices minutes late.
-  return createLoop(run, { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true, startAfter: deps.resumeAt ?? 0 });
+  return createLoop(async (upTo) => void (await run(upTo)), { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true, startAfter: deps.resumeAt ?? 0 });
 }
 
 /** Reads the session's naming settings; null means this session does not name. Throws on a bad config or an unknown prompt version. */

@@ -122,11 +122,18 @@ export async function remove(db: Queryable, id: number): Promise<boolean> {
   return (rowCount ?? 0) > 0;
 }
 
-/** The claims placed between `from` and `to` (by t0), oldest first, at most `limit`: what a stretch is deduped against. */
-export async function around(db: Queryable, sessionId: string, from: number, to: number, limit = 100): Promise<Claim[]> {
+/**
+ * The `limit` claims placed nearest to [from, to] (by t0, at most `margin` seconds outside it), oldest first: what a
+ * window of a stretch extracted after the fact is deduped against, its neighbours on both sides.
+ */
+export async function around(db: Queryable, sessionId: string, from: number, to: number, margin: number, limit: number): Promise<Claim[]> {
   const { rows } = await db.query<Row>(
-    `select ${COLUMNS} from claims where session_id = $1 and t0 is not null and t0 >= $2 and t0 <= $3 order by t0 asc, id asc limit $4`,
-    [sessionId, from, to, limit],
+    `select ${COLUMNS} from (
+       select ${COLUMNS} from claims
+        where session_id = $1 and t0 is not null and t0 >= $2::float8 - $4::float8 and t0 <= $3::float8 + $4::float8
+        order by greatest(0, $2::float8 - t0, t0 - $3::float8) asc, id desc limit $5
+     ) near order by t0 asc, id asc`,
+    [sessionId, from, to, margin, limit],
   );
   return rows.map(toClaim);
 }

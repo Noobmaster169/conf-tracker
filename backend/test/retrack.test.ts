@@ -4,7 +4,7 @@ import { afterAll, expect, test } from "vitest";
 import { fakeLlm } from "../src/agents/__fakes__/fake-llm";
 import { TrackConfig } from "../src/contracts";
 import { closePool } from "../src/db";
-import { retrackRange } from "../src/pipeline/retrack";
+import { retrackRange } from "../src/ingest/retrack";
 import { createHub } from "../src/realtime/hub";
 import * as segments from "../src/repositories/segments";
 import * as sessions from "../src/repositories/sessions";
@@ -73,5 +73,70 @@ test("rewriteRange trims the spans that reach into the range and drops the ones 
       { talk: b.id, t0: 1300, t1: null, source: "admin" },
     ]);
     expect(c.id).toBeGreaterThan(0);
+  });
+});
+
+test("a retrack with a failed read writes nothing and says so", async () => {
+  await inRollback(async (tx) => {
+    const { s } = await staged(tx);
+    const before = await shape(tx, s.id);
+    const llm = fakeLlm(new Error("proxy down"));
+    expect(await retrackRange({ db: tx, hub: createHub(100), sessionId: s.id, llm: llm.client, config: TrackConfig.parse({}) }, 300, 500)).toBe(false);
+    expect(await shape(tx, s.id)).toEqual(before);
+  });
+});
+
+async function bare(db: PoolClient) {
+  const stage = await stages.create(db, { conference: "Summit", name: "Main", day: "2026-11-16", description: "" });
+  const mk = (title: string) => talks.create(db, stage.id, { title, description: "", kind: "talk", starts_at: null, ends_at: null, speakers: [] });
+  const ids = [await mk("A"), await mk("B"), await mk("C"), await mk("D")].map((t) => t.id);
+  const s = await sessions.create(db, { sourceUrl: URL, sourceFile: null, config: {}, stageId: stage.id });
+  const at = (talkId: number, t: number) => spans.switchTo(db, s.id, { talkId, state: "talk", t, confidence: 0.9, quote: null, source: "tracker", callId: null });
+  return { s, ids: ids as [number, number, number, number], at };
+}
+
+test("rewriteRange splits a span still open across the range; the part after stays open", async () => {
+  await inRollback(async (tx) => {
+    const { s, ids: [a, b], at } = await bare(tx);
+    await at(a, 0);
+    await spans.rewriteRange(tx, s.id, 300, 500, [{ talkId: b, state: "talk", t0: 300, t1: 500 }]);
+    expect(await shape(tx, s.id)).toEqual([
+      { talk: a, t0: 0, t1: 300, source: "tracker" },
+      { talk: b, t0: 300, t1: 500, source: "tracker" },
+      { talk: a, t0: 500, t1: null, source: "tracker" },
+    ]);
+  });
+});
+
+test("rewriteRange leaves spans that only touch the edges, and joins the new ones to them when they are the same talk", async () => {
+  await inRollback(async (tx) => {
+    const { s, ids: [a, b, c, d], at } = await bare(tx);
+    await at(a, 0);
+    await at(c, 300);
+    await at(d, 500);
+    await spans.close(tx, s.id, 800);
+    await spans.rewriteRange(tx, s.id, 300, 500, [{ talkId: a, state: "talk", t0: 300, t1: 400 }, { talkId: b, state: "talk", t0: 400, t1: 450 }, { talkId: d, state: "talk", t0: 450, t1: 500 }]);
+    expect(await shape(tx, s.id)).toEqual([
+      { talk: a, t0: 0, t1: 400, source: "tracker" },
+      { talk: b, t0: 400, t1: 450, source: "tracker" },
+      { talk: d, t0: 450, t1: 800, source: "tracker" },
+    ]);
+  });
+});
+
+test("rewriteRange over several spans trims the outer two and drops the ones inside", async () => {
+  await inRollback(async (tx) => {
+    const { s, ids: [a, b, c, d], at } = await bare(tx);
+    await at(a, 0);
+    await at(b, 350);
+    await at(c, 420);
+    await at(d, 480);
+    await spans.close(tx, s.id, 800);
+    await spans.rewriteRange(tx, s.id, 300, 500, [{ talkId: null, state: "break", t0: 300, t1: 500 }]);
+    expect(await shape(tx, s.id)).toEqual([
+      { talk: a, t0: 0, t1: 300, source: "tracker" },
+      { talk: null, t0: 300, t1: 500, source: "tracker" },
+      { talk: d, t0: 500, t1: 800, source: "tracker" },
+    ]);
   });
 });

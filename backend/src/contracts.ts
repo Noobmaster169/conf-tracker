@@ -136,7 +136,13 @@ export const Gap = z.object({
   created_at: z.string(),
   // Why the recording could not fill it, once filling was given up.
   note: z.string().nullable().default(null),
+  // The last step of its fill done: transcribed, tracked, named, extracted, summarised; null before the transcript.
+  stage: z.enum(["transcribed", "tracked", "named", "extracted", "summarised"]).nullable().default(null),
+  stage_at: z.string().nullable().default(null),
+  tried_at: z.string().nullable().default(null),
+  since: z.string().nullable().default(null),
 });
+export type GapStage = NonNullable<Gap["stage"]>;
 export type Gap = z.infer<typeof Gap>;
 
 export const Segment = z.object({

@@ -127,16 +127,20 @@ export function extractorFactory(llm: LlmClient): ExtractorFactory {
   };
 }
 
-/** How far either side of a gap the claims it is deduped against may lie. */
+/** How far either side of a window the claims it is deduped against may lie. */
 const RANGE_DEDUPE_S = 300;
 
 /**
  * Extracts a stretch the live extractor never saw (a filled gap): window after window from t0 until the lines end at
- * t1, by the same rules as live, deduped against the claims around the stretch rather than the latest ones. Its
+ * t1, by the same rules as live, each window deduped against the claims nearest to it rather than the latest ones. Its
  * cursor is its own (the answered windows ending inside the stretch), so it resumes after a failure, and it never reads
  * or moves the video's: its windows end at or before t1, below where the video's extraction already is. True when done.
  */
-export async function extractRange(deps: Omit<ExtractorDeps, "resumeAt">, t0: number, t1: number): Promise<boolean> {
+export async function extractRange(
+  deps: Omit<ExtractorDeps, "resumeAt"> & { proceed?: () => Promise<boolean> },
+  t0: number,
+  t1: number,
+): Promise<boolean> {
   const { db, hub, sessionId, llm } = deps;
   const config = await liveConfig(db, sessionId, ExtractConfig, deps.config);
   if (!config.extract) return true;
@@ -149,7 +153,9 @@ export async function extractRange(deps: Omit<ExtractorDeps, "resumeAt">, t0: nu
       const rows = (await segments.list(db, sessionId, { from, to: t1 })).filter((s) => s.t1 <= t1);
       const window = selectWindow(segmentsToLines(rows), cursorT, config);
       if (!window) return true;
-      const prior = await claims.around(db, sessionId, t0 - RANGE_DEDUPE_S, t1 + RANGE_DEDUPE_S);
+      if (deps.proceed && !(await deps.proceed())) return false;
+      // Its neighbours on both sides, the claims after the stretch included, nearest first.
+      const prior = await claims.around(db, sessionId, window.t0, window.t1, RANGE_DEDUPE_S, config.dedupe_n);
       const names = labelMap(await speakers.list(db, sessionId), await people.forSession(db, sessionId));
       const context = await loadStageContext(db, sessionId, window.t1);
       const result = await runExtraction({ db, llm, sessionId, prompt }, window, prior, names, context ? onStageText(context) : null);

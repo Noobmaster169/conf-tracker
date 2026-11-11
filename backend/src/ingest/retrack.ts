@@ -3,16 +3,16 @@ import { loadPrompt } from "../agents/prompts/registry";
 import { runTracking } from "../agents/track";
 import { type Span, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
-import { liveConfig, livePrompt } from "../ingest/live-config";
-import { loadStageContext } from "../ingest/stage-context";
+import { segmentsToLines } from "../pipeline/lines";
+import { labelMap, resolveId } from "../pipeline/naming";
+import { decide, type Read, renderTrackInput } from "../pipeline/tracking";
 import type { Hub } from "../realtime/hub";
 import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as spans from "../repositories/spans";
 import * as speakers from "../repositories/speakers";
-import { segmentsToLines } from "./lines";
-import { labelMap, resolveId } from "./naming";
-import { decide, type Read, renderTrackInput } from "./tracking";
+import { liveConfig, livePrompt } from "./live-config";
+import { loadStageContext } from "./stage-context";
 
 // A segment can start before the window's first line and still end inside it; this covers the longest chunk.
 const SEGMENT_MARGIN_S = 30;
@@ -23,19 +23,23 @@ export interface RetrackDeps {
   sessionId: string;
   llm: LlmClient;
   config: TrackConfig;
+  /** Asked before each model call: false stops the run, with nothing written. */
+  proceed?: () => Promise<boolean>;
 }
 
 /**
  * Reads what was on stage over a stretch the live tracker never heard (a filled gap), with the same prompt and the same
  * hysteresis as live, starting from the span that covers t0. When the belief changed inside [t0, t1], the spans there
  * are rewritten; otherwise nothing is. A video with no stage, or no schedule, is left alone.
+ * True when the stretch was read through; false when a read failed or the run was stopped, and then nothing is written:
+ * a partial read of the stretch never counts.
  */
-export async function retrackRange(deps: RetrackDeps, t0: number, t1: number): Promise<void> {
+export async function retrackRange(deps: RetrackDeps, t0: number, t1: number): Promise<boolean> {
   const { db, hub, sessionId, llm } = deps;
   const config = await liveConfig(db, sessionId, TrackConfig, deps.config);
-  if (!config.track || t1 <= t0) return;
+  if (!config.track || t1 <= t0) return true;
   const context = await loadStageContext(db, sessionId, t0);
-  if (!context || context.schedule.length === 0) return;
+  if (!context || context.schedule.length === 0) return true;
   const prompt = livePrompt("track", config.track_prompt, config.track_model, { ...loadPrompt("track", deps.config.track_prompt), model: deps.config.track_model });
   const roster = await speakers.list(db, sessionId);
   const names = labelMap(roster, await people.forSession(db, sessionId));
@@ -55,26 +59,26 @@ export async function retrackRange(deps: RetrackDeps, t0: number, t1: number): P
       .filter((l) => l.t1 > end - config.track_window_s)
       .map((l) => (l.speaker_id === null ? l : { ...l, speaker_id: resolveId(roster, l.speaker_id) }));
     if (lines.length > 0) {
+      if (deps.proceed && !(await deps.proceed())) return false;
       const input = renderTrackInput({ stage: context.stage, schedule: context.schedule, running: belief, seen, lines, names, now: end });
       const result = await runTracking({ db, llm, sessionId, prompt }, input, lines, context.schedule);
       hub.publish(sessionId, { type: "call", data: result.call });
-      if (result.read) {
-        const decision = decide(belief, pending, result.read, config.track_switch_confidence);
-        if (decision.kind === "keep") {
-          pending = decision.pending;
-        } else {
-          pending = null;
-          // Evidence before the gap, or before the last switch, dates the change to where the reads can place it.
-          const t = Math.min(t1, Math.max(t0, decision.t, switches.at(-1)?.t ?? t0));
-          if (belief?.talk_id != null && belief.talk_id !== decision.talkId) seen.add(belief.talk_id);
-          switches.push({ talkId: decision.talkId, state: decision.state, t });
-          belief = { id: -1, session_id: sessionId, talk_id: decision.talkId, state: decision.state, t0: t, t1: null, confidence: decision.confidence, source: "tracker" };
-        }
+      if (!result.read) return false;
+      const decision = decide(belief, pending, result.read, config.track_switch_confidence);
+      if (decision.kind === "keep") {
+        pending = decision.pending;
+      } else {
+        pending = null;
+        // Evidence before the gap, or before the last switch, dates the change to where the reads can place it.
+        const t = Math.min(t1, Math.max(t0, decision.t, switches.at(-1)?.t ?? t0));
+        if (belief?.talk_id != null && belief.talk_id !== decision.talkId) seen.add(belief.talk_id);
+        switches.push({ talkId: decision.talkId, state: decision.state, t });
+        belief = { id: -1, session_id: sessionId, talk_id: decision.talkId, state: decision.state, t0: t, t1: null, confidence: decision.confidence, source: "tracker" };
       }
     }
     if (end >= t1) break;
   }
-  if (switches.length === 0) return;
+  if (switches.length === 0) return true;
 
   const edges = [...switches.map((s) => s.t), t1];
   const next: spans.RangeSpan[] = switches.map((s, i) => ({ talkId: s.talkId, state: s.state, t0: s.t, t1: edges[i + 1]! }));
@@ -83,4 +87,5 @@ export async function retrackRange(deps: RetrackDeps, t0: number, t1: number): P
   for (const span of (await spans.list(db, sessionId)).filter((s) => s.t0 < t1 + 1 && (s.t1 === null || s.t1 > t0 - 1))) {
     hub.publish(sessionId, { type: "span", data: span });
   }
+  return true;
 }

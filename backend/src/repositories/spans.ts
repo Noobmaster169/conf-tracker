@@ -1,5 +1,5 @@
 import { Span, type SpanState } from "../contracts";
-import type { Queryable } from "../db";
+import { atomic, type Queryable } from "../db";
 
 interface Row {
   id: string;
@@ -122,9 +122,15 @@ const sameStage = (span: Span, next: RangeSpan) => span.state === next.state && 
  * (source tracker), joined to the span either side when it is the same talk, so a talk that went on is still one span.
  */
 export async function rewriteRange(db: Queryable, sessionId: string, t0: number, t1: number, next: RangeSpan[]): Promise<void> {
-  const overlapping = (await list(db, sessionId)).filter((s) => s.t0 < t1 && (s.t1 === null || s.t1 > t0));
-  let before: Span | null = null;
-  let after: Span | null = null;
+  await atomic(db, (tx) => rewrite(tx, sessionId, t0, t1, next));
+}
+
+async function rewrite(db: Queryable, sessionId: string, t0: number, t1: number, next: RangeSpan[]): Promise<void> {
+  const all = await list(db, sessionId);
+  const overlapping = all.filter((s) => s.t0 < t1 && (s.t1 === null || s.t1 > t0));
+  // A span ending exactly at t0, or starting exactly at t1, is a neighbour too: the new ones may join it.
+  let before: Span | null = all.find((s) => s.t1 === t0 && s.t0 < t0) ?? null;
+  let after: Span | null = all.find((s) => s.t0 === t1 && (s.t1 === null || s.t1 > t1)) ?? null;
   for (const span of overlapping) {
     const startsBefore = span.t0 < t0;
     const endsAfter = span.t1 === null || span.t1 > t1;

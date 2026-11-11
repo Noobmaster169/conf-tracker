@@ -6,7 +6,7 @@ import type { Hub } from "../realtime/hub";
 import * as calls from "../repositories/calls";
 import * as spans from "../repositories/spans";
 import { type Extractor, extractorFactory } from "./extractor";
-import { fillGaps } from "./gap-filler";
+import { createGapFiller } from "./gap-filler";
 import type { SessionRunner } from "./session-runner";
 import { summaryAllowed } from "./summary-allowance";
 import type { Summarize } from "./summarizer";
@@ -21,8 +21,8 @@ const EXTRACT_BACKOFF_MS = 15 * 60 * 1000;
 export interface SweepReport {
   extracted: string[];
   summarised: number[];
-  /** Videos with a gap filled. */
-  filled: string[];
+  /** Gaps that advanced a stage of their fill. */
+  gaps: number[];
 }
 
 /** A segment of video `s` inside one of its open gaps: the gap filler's to extract, not the video's own extractor's. */
@@ -54,12 +54,13 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  * when the stream ended) and the summaries of talks that ended without one. Never touches a video the runner is
  * using, and never runs twice at once.
  */
-export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport> } {
+export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport>; gapLegSettled(): Promise<void> } {
   const { db, hub, llm, summarize, runner } = deps;
   const factory = extractorFactory(llm);
   let running = false;
 
   const now = deps.now ?? Date.now;
+  const filler = createGapFiller({ db, hub, llm, summarize, runner, config: deps.config, now });
 
   async function extractBacklogs(report: SweepReport): Promise<void> {
     // A finished video drops out: its cursor reaches the end of its last line. A failing one waits out its back-off.
@@ -97,7 +98,8 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
 
   /**
    * Stopped videos with gaps still to try, once their own extraction owes nothing (or they do not extract): the gaps'
-   * windows must lie below the video's extract cursor, never ahead of lines it still owes.
+   * windows must lie below the video's extract cursor, never ahead of lines it still owes. Not held: only a gap leg
+   * is (by the runner), and the filler checks before every step that the video is still stopped and free.
    */
   async function fillAllGaps(report: SweepReport): Promise<void> {
     const { rows } = await db.query<{ id: string }>(
@@ -110,15 +112,11 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
     );
     for (const { id } of rows) {
       if (runner.busy().includes(id)) continue;
-      const work = (async () => {
-        try {
-          if ((await fillGaps({ db, hub, llm, summarize, runner, config: deps.config, now }, id)) > 0) report.filled.push(id);
-        } catch (error) {
-          log.error({ sessionId: id, err: errorText(error) }, "filling a video's gaps failed");
-        }
-      })();
-      runner.hold(id, work);
-      await work;
+      try {
+        report.gaps.push(...(await filler.advance(id)));
+      } catch (error) {
+        log.error({ sessionId: id, err: errorText(error) }, "filling a video's gaps failed");
+      }
     }
   }
 
@@ -140,7 +138,7 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
 
   return {
     async sweep() {
-      const report: SweepReport = { extracted: [], summarised: [], filled: [] };
+      const report: SweepReport = { extracted: [], summarised: [], gaps: [] };
       if (running) return report;
       running = true;
       try {
@@ -155,5 +153,6 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
       }
       return report;
     },
+    gapLegSettled: () => filler.legSettled(),
   };
 }

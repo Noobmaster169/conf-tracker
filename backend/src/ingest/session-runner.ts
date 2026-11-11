@@ -503,7 +503,14 @@ export function createSessionRunner(deps: {
       if (session.status !== "degraded" && session.status !== "stopped") {
         throw new TerminalError(`session ${sessionId} is ${session.status}; only a degraded or stopped video can be resumed`);
       }
-      return revive(session, now());
+      // Revived before anything is awaited, so a second resume finds this one. A resume by hand is also a nudge: the
+      // gaps given up on are tried again once the video stops.
+      const cleared = gaps
+        .retryNoted(db, sessionId)
+        .catch((error: unknown) => log.error({ sessionId, err: errorText(error) }, "clearing the notes of a resumed video's gaps failed"));
+      const revived = revive(session, now());
+      await cleared;
+      return revived;
     },
     async resumeAll() {
       // Concurrently: one slow speech connect must not hold the other videos back.

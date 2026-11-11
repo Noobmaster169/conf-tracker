@@ -40,7 +40,7 @@ const resumed = runner
 
 // What a stopped video still owes (windows a downed model left, summaries that failed) is finished in the background.
 const sweeper = createSweeper({ db, hub, llm, summarize, runner });
-const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length) && log.info(r, "sweep finished work"));
+const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length || r.gaps.length) && log.info(r, "sweep finished work"));
 // Only after resumeAll has settled: until then the runner does not yet know which videos it is reviving.
 void resumed.then(() => {
   sweep();
