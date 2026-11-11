@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-import { createStageAction, setNowAction, setVideoStageAction, stopVideoAction, trackVideoAction } from "@/app/actions/admin";
+import { createStageAction, resumeVideoAction, setNowAction, setVideoStageAction, stopVideoAction, trackVideoAction } from "@/app/actions/admin";
 import { AdminTabs, Field, Notice, Panel, SubmitButton } from "@/components/admin/parts";
 import { LiveBadge, Page, PageHeader } from "@/components/ui/bits";
 import { isLive } from "@/components/ui/video-card";
 import { listStages, listVideos, type StageWithTalks, type VideoCard } from "@/lib/api-client";
 import { formatDay, plural } from "@/lib/format";
+import { sessionState } from "@/lib/session-state";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ function StageSelect({ stages, value, empty }: { stages: StageWithTalks[]; value
 function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[] }) {
   const { session } = video;
   const live = isLive(video);
+  const state = sessionState(session, null, video.gaps);
+  const canResume = session.status === "degraded" || (session.status === "stopped" && video.gaps.length > 0);
   const talks = stages.find((s) => s.stage.id === session.stage_id)?.talks ?? [];
   return (
     <li className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -35,7 +38,8 @@ function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[
           {session.title ?? session.source_url ?? session.id}
         </Link>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[13px] text-ink-soft">
-          {live ? <LiveBadge /> : <span className="capitalize">{session.status === "degraded" ? "Interrupted" : session.status}</span>}
+          {state.label === "Live" ? <LiveBadge /> : <span className={state.label === "Needs attention" || state.label === "Recovering" ? "font-medium text-live" : undefined}>{state.label}</span>}
+          {state.detail && <span>{state.detail}</span>}
           <span>{plural(video.claim_count, "claim")}</span>
           {live && <span>On stage: {video.now?.title ?? "not identified yet"}</span>}
         </p>
@@ -58,6 +62,12 @@ function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[
               ))}
             </select>
             <SubmitButton quiet working="Setting">Set on stage</SubmitButton>
+          </form>
+        )}
+        {canResume && (
+          <form action={resumeVideoAction}>
+            <input type="hidden" name="id" value={session.id} />
+            <SubmitButton working="Resuming">Resume</SubmitButton>
           </form>
         )}
         {live && (

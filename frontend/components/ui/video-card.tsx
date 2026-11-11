@@ -6,7 +6,7 @@ import { formatDuration, plural, thumbnailUrl } from "@/lib/format";
 import { LiveBadge } from "./bits";
 import { LocalTime } from "./local-time";
 
-const isLive = (video: Video): boolean => video.session.status === "live" || video.session.status === "starting";
+const isLive = (video: Video): boolean => ["live", "starting", "recovering"].includes(video.session.status);
 
 /** One stream: its picture, what it is, what is on stage if it is live, and how much has come out of it. */
 export function VideoCard({ video }: { video: Video }) {

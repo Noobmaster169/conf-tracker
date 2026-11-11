@@ -6,7 +6,7 @@ import { Person, Span, Stage, Talk } from "./conference";
 export const Word = z.object({ w: z.string(), t0: z.number(), t1: z.number(), p: z.number(), speaker_id: z.string().nullable() });
 export type Word = z.infer<typeof Word>;
 
-export const SessionStatus = z.enum(["starting", "live", "degraded", "stopped"]);
+export const SessionStatus = z.enum(["starting", "live", "recovering", "degraded", "stopped"]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
 export const Session = z.object({
@@ -26,11 +26,30 @@ export const Session = z.object({
   // Older backends omit both: a video with no stage and no stored title.
   stage_id: z.string().nullable().default(null),
   title: z.string().nullable().default(null),
+  // Older backends omit both: nothing needs attention and nothing is recovering.
+  attention: z.string().nullable().default(null),
+  recovering_since: z.string().nullable().default(null),
 });
 export type Session = z.infer<typeof Session>;
 
 export const Segment = z.object({ id: z.number(), session_id: z.string(), t0: z.number(), t1: z.number(), text: z.string(), words: z.array(Word) });
 export type Segment = z.infer<typeof Segment>;
+
+export const Gap = z.object({
+  id: z.number(),
+  session_id: z.string(),
+  t0: z.number(),
+  t1: z.number(),
+  filled_at: z.string().nullable(),
+  created_at: z.string(),
+  // Why the recording could not fill it, once filling was given up.
+  note: z.string().nullable().default(null),
+  stage: z.enum(["transcribed", "tracked", "named", "extracted", "summarised"]).nullable().default(null),
+  stage_at: z.string().nullable().default(null),
+  tried_at: z.string().nullable().default(null),
+  since: z.string().nullable().default(null),
+});
+export type Gap = z.infer<typeof Gap>;
 
 export const Health = z.object({
   t: z.number(),
@@ -38,6 +57,8 @@ export const Health = z.object({
   gpu_ms_asr: z.number(),
   gpu_ms_diar: z.number(),
   buffer_s: z.number(),
+  // Seconds behind the live edge while catching up; null (or absent on an older backend) when not live.
+  behind_s: z.number().nullable().default(null),
   received_at: z.string(),
 });
 export type Health = z.infer<typeof Health>;
@@ -124,6 +145,7 @@ export const Snapshot = z.object({
   claims: z.array(Claim).default([]),
   calls: z.array(CallSummary).default([]),
   cost_usd: z.number().default(0),
+  gaps: z.array(Gap).default([]),
   seq: z.number(),
   stage: Stage.nullable().default(null),
   talks: z.array(Talk).default([]),

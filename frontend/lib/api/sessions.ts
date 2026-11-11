@@ -35,6 +35,11 @@ export function stopSession(id: string): Promise<Session> {
   return post(Session, `/sessions/${encodeURIComponent(id)}/stop`);
 }
 
+/** Picks a degraded or stopped video up again from where its transcript ends. 409 means it is already running. */
+export function resumeSession(id: string): Promise<Session> {
+  return post(Session, `/sessions/${encodeURIComponent(id)}/resume`);
+}
+
 export function setSessionStage(id: string, stageId: string | null): Promise<Session> {
   return post(Session, `/sessions/${encodeURIComponent(id)}/stage`, { stage_id: stageId });
 }

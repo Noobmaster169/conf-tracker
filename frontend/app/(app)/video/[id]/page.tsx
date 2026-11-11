@@ -26,7 +26,7 @@ export default async function VideoPage({ params, searchParams }: PageProps<"/vi
   const { t } = await searchParams;
   const snapshot = await getSnapshot(id);
   if (!snapshot) notFound();
-  const live = snapshot.session.status === "live" || snapshot.session.status === "starting";
+  const live = snapshot.session.status === "live" || snapshot.session.status === "starting" || snapshot.session.status === "recovering";
   // A finished video is read from the top, so it gets all of its transcript; a live one opens at its newest lines.
   const [segments, claims] = await Promise.all([live ? snapshot.segments : getTranscript(id), allClaims(id)]);
   const start = typeof t === "string" && /^\d+$/.test(t) ? Number(t) : null;

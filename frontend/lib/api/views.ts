@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { Person, Stage, Talk, TalkSummary } from "./conference";
-import { Claim, Session } from "./schemas";
+import { Claim, Gap, Session } from "./schemas";
 
 /** What the pages read, mirrored by hand from backend/src/contracts-views.ts. Change both or neither. */
 export const FeedItem = Claim.extend({
@@ -21,6 +21,7 @@ export const VideoCard = z.object({
   now: z.object({ id: z.number(), title: z.string() }).nullable(),
   claim_count: z.number(),
   duration_s: z.number(),
+  gaps: z.array(Gap).default([]),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

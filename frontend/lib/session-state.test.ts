@@ -18,9 +18,11 @@ const session: Snapshot["session"] = {
   created_at: "2026-09-23T00:00:00.000Z",
   stage_id: null,
   title: null,
+  attention: null,
+  recovering_since: null,
 };
 const seg = (id: number, t0: number, text = "x"): Segment => ({ id, session_id: "s", t0, t1: t0 + 1, text, words: [] });
-const snapshot: Snapshot = { session, segments: [seg(1, 0), seg(2, 5)], health: null, speakers: [], claims: [], calls: [], cost_usd: 0, seq: 2, stage: null, talks: [], spans: [], people: [] };
+const snapshot: Snapshot = { session, segments: [seg(1, 0), seg(2, 5)], health: null, gaps: [], speakers: [], claims: [], calls: [], cost_usd: 0, seq: 2, stage: null, talks: [], spans: [], people: [] };
 
 test("initial state comes from the snapshot, connecting", () => {
   const state = initialState(snapshot);
@@ -41,7 +43,7 @@ test("a segment is inserted in time order and replaced by id", () => {
 
 test("health and session events replace their slot", () => {
   let state = initialState(snapshot);
-  state = applyEvent(state, { seq: 3, type: "health", data: { t: 1, lag_s: 2, gpu_ms_asr: 3, gpu_ms_diar: 0, buffer_s: 4, received_at: "now" } });
+  state = applyEvent(state, { seq: 3, type: "health", data: { t: 1, lag_s: 2, gpu_ms_asr: 3, gpu_ms_diar: 0, buffer_s: 4, behind_s: null, received_at: "now" } });
   expect(state.health?.lag_s).toBe(2);
   state = applyEvent(state, { seq: 4, type: "session", data: { ...session, status: "degraded" } });
   expect(state.session.status).toBe("degraded");
@@ -193,4 +195,32 @@ test("a live segment the snapshot already delivered records no arrival, so the d
   const known = snapshot.segments[0]!;
   const state = applyEvent(initialState(snapshot), { seq: 3, type: "segment", data: { ...known, text: "again" } }, 12_345);
   expect(state.arrivals).toEqual({});
+});
+
+import type { Gap, Health } from "./api/schemas";
+import { sessionState } from "./session-state";
+
+const healthAt = (behind_s: number | null): Health => ({ t: 1, lag_s: 0, gpu_ms_asr: 0, gpu_ms_diar: 0, buffer_s: 0, behind_s, received_at: "now" });
+const gap = (t0: number, t1: number, note: string | null = null): Gap => ({ id: t0, session_id: "s", t0, t1, filled_at: null, created_at: "2026-09-23T00:00:00.000Z", note, stage: null, stage_at: null, tried_at: null, since: null });
+const as = (patch: Partial<Snapshot["session"]>): Snapshot["session"] => ({ ...session, ...patch });
+
+test("sessionState says live, catching up, recovering, needs attention, ended or stopped", () => {
+  expect(sessionState(as({}), healthAt(5), [])).toEqual({ label: "Live", detail: null });
+  expect(sessionState(as({}), null, [])).toEqual({ label: "Live", detail: null });
+  expect(sessionState(as({}), healthAt(119), [])).toEqual({ label: "Live", detail: null });
+  expect(sessionState(as({}), healthAt(125), [])).toEqual({ label: "Catching up", detail: "2 min behind" });
+  const since = "2026-09-23T10:05:00.000Z";
+  const recovering = sessionState(as({ status: "recovering", recovering_since: since }), null, []);
+  expect(recovering.label).toBe("Recovering");
+  expect(recovering.detail).toMatch(/^since \d\d:\d\d$/);
+  expect(sessionState(as({ status: "recovering", attention: "Speech is unreachable" }), null, [])).toEqual({ label: "Needs attention", detail: "Speech is unreachable" });
+  expect(sessionState(as({ attention: "Check the stream" }), healthAt(500), [])).toEqual({ label: "Needs attention", detail: "Check the stream" });
+  expect(sessionState(as({ status: "stopped" }), null, [])).toEqual({ label: "Ended", detail: null });
+  expect(sessionState(as({ status: "stopped", error: "boom" }), null, [])).toEqual({ label: "Stopped", detail: "boom" });
+});
+
+test("open gaps add what is not covered yet, and a noted gap says its note instead", () => {
+  expect(sessionState(as({}), healthAt(0), [gap(100, 220), gap(300, 330)])).toEqual({ label: "Live", detail: "3 min not covered yet" });
+  expect(sessionState(as({}), healthAt(200), [gap(0, 61)])).toEqual({ label: "Catching up", detail: "3 min behind · 2 min not covered yet" });
+  expect(sessionState(as({ status: "stopped" }), null, [gap(0, 60), gap(100, 200, "The recording has no audio there")])).toEqual({ label: "Ended", detail: "1 min not covered yet · The recording has no audio there" });
 });

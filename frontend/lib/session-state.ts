@@ -1,5 +1,5 @@
 import type { Person, Span, Stage, Talk } from "./api/conference";
-import type { CallSummary, Claim, Health, LiveEvent, Segment, Session, Snapshot, Speaker, TurnsUpdate } from "./api/schemas";
+import type { CallSummary, Claim, Gap, Health, LiveEvent, Segment, Session, Snapshot, Speaker, TurnsUpdate } from "./api/schemas";
 
 export type Connection = "connecting" | "open" | "closed";
 
@@ -10,6 +10,8 @@ export interface SessionState {
   session: Session;
   segments: Segment[];
   health: Health | null;
+  /** The stretches of the stream not covered yet, as of the snapshot. */
+  gaps: Gap[];
   speakers: Speaker[];
   claims: Claim[];
   calls: CallSummary[];
@@ -31,6 +33,7 @@ export function initialState(snapshot: Snapshot): SessionState {
     session: snapshot.session,
     segments: snapshot.segments,
     health: snapshot.health,
+    gaps: snapshot.gaps,
     speakers: snapshot.speakers,
     claims: snapshot.claims,
     calls: snapshot.calls,
@@ -149,4 +152,37 @@ export function talkAt(state: Pick<SessionState, "spans" | "talks">, t: number |
   if (t === null) return null;
   const span = state.spans.findLast((s) => s.state === "talk" && t >= s.t0 && (s.t1 === null || t < s.t1));
   return state.talks.find((talk) => talk.id === span?.talk_id) ?? null;
+}
+
+export interface StateLabel {
+  label: "Live" | "Catching up" | "Recovering" | "Needs attention" | "Ended" | "Stopped";
+  detail: string | null;
+}
+
+const CATCHING_UP_S = 120;
+
+const clock = (iso: string | null): string => {
+  const at = iso ? new Date(iso) : null;
+  if (!at || Number.isNaN(at.getTime())) return "";
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+};
+
+/** What a reader or an admin should make of a video right now, and what part of the stream is still missing. */
+export function sessionState(session: Session, health: Pick<Health, "behind_s"> | null, gaps: Gap[]): StateLabel {
+  const behind = health?.behind_s ?? null;
+  let state: StateLabel;
+  if (session.attention) state = { label: "Needs attention", detail: session.attention };
+  else if (session.status === "recovering") state = { label: "Recovering", detail: `since ${clock(session.recovering_since)}`.trim() };
+  else if (session.status === "degraded") state = { label: "Needs attention", detail: "The stream was interrupted" };
+  else if (session.status === "stopped") state = session.error ? { label: "Stopped", detail: session.error } : { label: "Ended", detail: null };
+  else if (behind !== null && behind >= CATCHING_UP_S) state = { label: "Catching up", detail: `${Math.floor(behind / 60)} min behind` };
+  else state = { label: "Live", detail: null };
+
+  const open = gaps.filter((g) => g.filled_at === null);
+  const plain = open.filter((g) => !g.note);
+  const parts: string[] = [];
+  if (state.detail) parts.push(state.detail);
+  if (plain.length > 0) parts.push(`${Math.ceil(plain.reduce((sum, g) => sum + (g.t1 - g.t0), 0) / 60)} min not covered yet`);
+  for (const g of open) if (g.note) parts.push(g.note);
+  return { label: state.label, detail: parts.length > 0 ? parts.join(" · ") : null };
 }

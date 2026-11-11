@@ -83,6 +83,10 @@ export async function stopVideoAction(form: FormData): Promise<void> {
   await run(form, "/admin", "Tracking stopped", async () => void (await api.stopSession(text(form, "id"))));
 }
 
+export async function resumeVideoAction(form: FormData): Promise<void> {
+  await run(form, "/admin", "Tracking resumed", async () => void (await api.resumeSession(text(form, "id"))));
+}
+
 export async function setVideoStageAction(form: FormData): Promise<void> {
   await run(form, "/admin", "Video moved", async () => void (await api.setSessionStage(text(form, "id"), orNull(form, "stage_id"))));
 }
