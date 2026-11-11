@@ -9,6 +9,7 @@ import { videoIdFromUrl } from "../lib/youtube-id";
 import type { Hub } from "../realtime/hub";
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
+import * as settings from "../repositories/settings";
 import * as stages from "../repositories/stages";
 import { buildSnapshot } from "./snapshot";
 
@@ -21,7 +22,7 @@ export interface SessionsDeps {
 }
 
 /** The same checks for a new session and a replay: a bad key or an unknown prompt version is named in the refusal. */
-function configError(config: Record<string, unknown>): string | null {
+export function configError(config: Record<string, unknown>): string | null {
   const extract = ExtractConfig.safeParse(config);
   if (!extract.success) {
     const issue = extract.error.issues[0];
@@ -57,7 +58,8 @@ export function sessionsRouter({ db, hub, runner, fetchTitle }: SessionsDeps): R
         res.status(400).json({ error: "not a YouTube video URL" });
         return;
       }
-      const config = { ...(body.data.config ?? {}), ...(body.data.speed !== undefined ? { speed: body.data.speed } : {}) };
+      // What has been set as the starting point (PATCH /ops/config), then what this request asks for.
+      const config = { ...(await settings.defaultConfig(db)), ...(body.data.config ?? {}), ...(body.data.speed !== undefined ? { speed: body.data.speed } : {}) };
       const refused = configError(config);
       if (refused) {
         res.status(400).json({ error: refused });

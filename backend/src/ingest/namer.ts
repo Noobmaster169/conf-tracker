@@ -11,6 +11,7 @@ import type { Hub } from "../realtime/hub";
 import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as speakers from "../repositories/speakers";
+import { liveConfig, livePrompt } from "./live-config";
 import { createLoop, type Loop, type LoopFactory } from "./loop";
 import { loadStageContext, scheduledPeople } from "./stage-context";
 
@@ -29,8 +30,9 @@ export interface NamerDeps {
 
 /** One per live session: every interval of stream time, when someone in the last few minutes has no name, the model is asked who they are. */
 export function createNamer(deps: NamerDeps): Loop {
-  const { db, hub, sessionId, llm, config } = deps;
-  const prompt = { ...loadPrompt("name", config.name_prompt), model: config.name_model };
+  const { db, hub, sessionId, llm } = deps;
+  // Loaded here too, so a missing prompt version refuses the session before anything starts.
+  const initialPrompt = { ...loadPrompt("name", deps.config.name_prompt), model: deps.config.name_model };
   // Boundaries that pass with no new speech would each ask about the same window again; one answer per window.
   let answeredT1: number | null = null;
 
@@ -38,6 +40,8 @@ export function createNamer(deps: NamerDeps): Loop {
     try {
       const last = await segments.lastUpTo(db, sessionId, upTo);
       if (!last) return;
+      const config = await liveConfig(db, sessionId, NameConfig, deps.config);
+      const prompt = livePrompt("name", config.name_prompt, config.name_model, initialPrompt);
       const from = Math.max(0, last.t1 - config.name_window_s - SEGMENT_MARGIN_S);
       const roster = await speakers.list(db, sessionId);
       const recent = (await segments.list(db, sessionId, { from, to: last.t1 })).filter((s) => s.t1 <= upTo);
@@ -64,7 +68,7 @@ export function createNamer(deps: NamerDeps): Loop {
 
   // No final run: a name found after the stop would help nobody, and it would cost a call.
   // Only the newest window is worth naming: a replay faster than the model would otherwise name voices minutes late.
-  return createLoop(run, { intervalS: config.name_interval_s, finalRun: false, latestOnly: true });
+  return createLoop(run, { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true });
 }
 
 /** Reads the session's naming settings; null means this session does not name. Throws on a bad config or an unknown prompt version. */

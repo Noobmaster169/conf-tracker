@@ -14,6 +14,7 @@ import { claimsRouter } from "./routes/claims.routes";
 import { conferenceRouter } from "./routes/conference.routes";
 import { correctionsRouter } from "./routes/corrections.routes";
 import { eventsRouter } from "./routes/events.routes";
+import { opsRouter, type Probe } from "./routes/ops.routes";
 import { sessionsRouter } from "./routes/sessions.routes";
 import { speakersRouter } from "./routes/speakers.routes";
 import { stageControlRouter } from "./routes/stage-control.routes";
@@ -27,6 +28,8 @@ export interface AppDeps {
   runner: SessionRunner;
   summarize?: Summarize;
   fetchTitle?: (url: string) => Promise<string | null>;
+  /** How /ops/status asks the proxy and speech for their health. Tests give a fake. */
+  probe?: Probe;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -55,6 +58,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(conferenceRouter(deps));
   app.use(adminRouter(deps));
   app.use(correctionsRouter(deps));
+  app.use(opsRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.

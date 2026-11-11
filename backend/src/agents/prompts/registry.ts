@@ -45,7 +45,23 @@ function parsePromptFile(path: string): Prompt {
 
 const versionNumber = (version: string): number => Number(version.slice(1));
 
-/** Every version of a step's prompt on disk, newest first. */
+/**
+ * Prompt versions registered through the api (PUT /ops/prompts/:step/:version), kept in the database and mirrored here
+ * so the loops can read them without a query. One of these is read before the file of the same step and version, and a
+ * version that exists only here is as real as one on disk. They apply to the shipped prompts directory only.
+ */
+const overrides = new Map<string, Prompt>();
+
+export function setOverrides(prompts: Prompt[]): void {
+  overrides.clear();
+  for (const prompt of prompts) overrides.set(`${prompt.step}/${prompt.version}`, prompt);
+}
+
+export function overrideFor(step: string, version: string): Prompt | null {
+  return overrides.get(`${step}/${version}`) ?? null;
+}
+
+/** Every version of a step's prompt, on disk or registered through the api, newest first. */
 export function listVersions(step: string, dir = PROMPTS_DIR): string[] {
   let files: string[];
   try {
@@ -54,7 +70,20 @@ export function listVersions(step: string, dir = PROMPTS_DIR): string[] {
     throw new TerminalError(`no prompts for step "${step}"`, { cause: error });
   }
   if (files.length === 0) throw new TerminalError(`no prompts for step "${step}"`);
-  return files.map((name) => name.slice(0, -3)).sort((a, b) => versionNumber(b) - versionNumber(a));
+  const versions = new Set(files.map((name) => name.slice(0, -3)));
+  if (dir === PROMPTS_DIR) for (const prompt of overrides.values()) if (prompt.step === step) versions.add(prompt.version);
+  return [...versions].sort((a, b) => versionNumber(b) - versionNumber(a));
+}
+
+/** The steps that have prompts on disk. A registered version must belong to one of them. */
+export function listSteps(dir = PROMPTS_DIR): string[] {
+  return readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !entry.name.startsWith("_")).map((entry) => entry.name).sort();
+}
+
+/** The file's own prompt, whatever is registered over it; null when the version is not on disk. */
+export function shippedPrompt(step: string, version: string, dir = PROMPTS_DIR): Prompt | null {
+  const path = join(dir, step, `${version}.md`);
+  return /^v\d+$/.test(version) && existsSync(path) ? parsePromptFile(path) : null;
 }
 
 export function latestVersion(step: string, dir = PROMPTS_DIR): string {
@@ -63,6 +92,8 @@ export function latestVersion(step: string, dir = PROMPTS_DIR): string {
 
 export function loadPrompt(step: string, version: string, dir = PROMPTS_DIR): Prompt {
   if (!/^v\d+$/.test(version)) throw new TerminalError(`"${version}" is not a prompt version`);
+  const registered = dir === PROMPTS_DIR ? overrideFor(step, version) : null;
+  if (registered) return registered;
   const path = join(dir, step, `${version}.md`);
   if (!existsSync(path)) throw new TerminalError(`no prompt ${step}/${version}`);
   const prompt = parsePromptFile(path);

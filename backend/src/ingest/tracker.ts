@@ -12,6 +12,7 @@ import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as spans from "../repositories/spans";
 import * as speakers from "../repositories/speakers";
+import { liveConfig, livePrompt } from "./live-config";
 import { createLoop, type Loop, type LoopFactory } from "./loop";
 import { loadStageContext } from "./stage-context";
 import type { Summarize } from "./summarizer";
@@ -36,8 +37,9 @@ export interface TrackerDeps {
  * no stage, or a stage with no schedule, makes no calls.
  */
 export function createTracker(deps: TrackerDeps): Loop {
-  const { db, hub, sessionId, llm, config, summarize } = deps;
-  const prompt = { ...loadPrompt("track", config.track_prompt), model: config.track_model };
+  const { db, hub, sessionId, llm, summarize } = deps;
+  // Loaded here too, so a missing prompt version refuses the session before anything starts.
+  const initialPrompt = { ...loadPrompt("track", deps.config.track_prompt), model: deps.config.track_model };
   let pending: Read | null = null;
   // Boundaries that pass with no new speech would each ask about the same window again; one answer per window.
   let answeredT1: number | null = null;
@@ -58,6 +60,8 @@ export function createTracker(deps: TrackerDeps): Loop {
     try {
       const last = await segments.lastUpTo(db, sessionId, upTo);
       if (!last || last.t1 === answeredT1) return;
+      const config = await liveConfig(db, sessionId, TrackConfig, deps.config);
+      const prompt = livePrompt("track", config.track_prompt, config.track_model, initialPrompt);
       const context = await loadStageContext(db, sessionId);
       if (!context || context.schedule.length === 0) return;
       const roster = await speakers.list(db, sessionId);
@@ -93,7 +97,7 @@ export function createTracker(deps: TrackerDeps): Loop {
     }
   }
 
-  const loop = createLoop(run, { intervalS: config.track_interval_s, finalRun: false });
+  const loop = createLoop(run, { intervalS: deps.config.track_interval_s, finalRun: false });
   return {
     ...loop,
     // The video is over: whatever was on stage ends where the transcript does, and gets its summary too.

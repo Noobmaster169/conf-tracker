@@ -121,6 +121,12 @@ export async function setTitle(db: Queryable, id: string, title: string | null):
   return toFoundSession(id, rows[0]);
 }
 
+/** Replaces a video's settings. A running video's loops read them at their next run. */
+export async function setConfig(db: Queryable, id: string, config: Record<string, unknown>): Promise<Session> {
+  const { rows } = await db.query<Row>(`update sessions set config = $2 where id = $1 returning ${COLUMNS}`, [id, JSON.stringify(config)]);
+  return toFoundSession(id, rows[0]);
+}
+
 /** How many replays were made of a video. They read its recording, so it cannot go while they are there. */
 export async function replayCount(db: Queryable, id: string): Promise<number> {
   const { rows } = await db.query<{ n: number }>("select count(*)::int as n from sessions where replay_of = $1", [id]);

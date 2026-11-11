@@ -31,6 +31,21 @@ and parts of 3 forward, and added per-session summaries, which the design had li
   onto a hidden stage.
 - `DELETE /people/:id` (Admin, Speakers, "Remove speaker") removes someone on no session and heard in no video.
 
+2026-11-11, running it with no access to the box (`CLAUDE.md`, `deploy/README.md` "Without the box"): the box will be
+out of reach during the conference, so everything a shell was used for got a way through the api or through git.
+
+- `/ops/status`, `/ops/logs`, `/ops/sql` (read-only), `/ops/jobs` (a fixed list of things the box does when asked),
+  the box's own report on every cron pass, and `ops/ct` to call them.
+- Prompts and settings change with no build and no restart: a prompt version can be registered through the api
+  (`prompt_overrides`), a running video's config can be patched and its loops read it at every run, and the config new
+  videos start from is a stored setting (migration 009).
+- `auto-deploy.sh` holds back a deploy that restarts the api while a video runs, waits for `/health` before it moves
+  the marker, puts the previous image back when the new one does not come up, stops retrying a commit that failed, and
+  runs `deploy/ops.d/*.sh` once each.
+- Not built: resuming a video after an api restart. Speech starts every connection at the stream's first second with
+  fresh speaker labels, so a resume needs a start offset and a label hand-over in yt-stream's speech service.
+- Not built: a second way to hear from the box when the tunnel is down. `git push` still reaches it then, blind.
+
 ## Phases
 
 Each phase is a branch with an exit checklist in `docs/phases/` and its own plan in
@@ -87,10 +102,8 @@ New:
 
 From the phase 0 review (deferred, not fixed):
 
-- `.deployed` moves after `docker compose up -d` succeeds, not after the api is healthy; a commit whose
-  migration crash-loops is marked deployed. Consider `up -d --wait` (the api has a healthcheck).
-- A build that always fails is rebuilt every three minutes with its full output appended to `deploy.log`.
-  Skip a failed sha until the next push, or back off.
+- Done 2026-11-11: `.deployed` now moves only once the api answers `/health`, and a build that keeps failing is
+  left alone after three tries.
 - `run-ngrok.sh` exits silently when `NGROK_DOMAIN` is unset (nohup output goes to /dev/null); the runbook's
   "start ngrok detached" step gives no command. Log the error to `$LOG` and give the exact command.
 - yt-stream's own auto-deploy restarts the shared speech service on any push touching `speech/`, which ends

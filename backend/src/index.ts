@@ -11,11 +11,15 @@ import { wsSpeechConnector } from "./ingest/speech-client";
 import { childLogger } from "./lib/logger";
 import { fetchVideoTitle } from "./lib/video-title";
 import { createHub } from "./realtime/hub";
+import { setOverrides } from "./agents/prompts/registry";
+import * as promptOverrides from "./repositories/prompt-overrides";
 import { markOrphansDegraded } from "./repositories/sessions";
 
 const log = childLogger({ module: "api" });
 
 const db = getPool();
+// Prompt versions registered through the api outlive a restart: they are read back before any video can start.
+setOverrides(await promptOverrides.list(db));
 const hub = createHub(config.SSE_RING_CAPACITY);
 const llm = proxyLlmClient();
 const summarize = createSummarizer({ db, llm });

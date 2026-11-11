@@ -12,6 +12,7 @@ import * as claims from "../repositories/claims";
 import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
 import * as speakers from "../repositories/speakers";
+import { liveConfig, livePrompt } from "./live-config";
 import { createLoop, type Loop, type LoopFactory } from "./loop";
 import { loadStageContext, onStageText } from "./stage-context";
 
@@ -34,12 +35,15 @@ export interface ExtractorDeps {
 
 /** One per live session: every interval of stream time, the lines since the cursor go to the model, and the cursor moves only on a call that answered. */
 export function createExtractor(deps: ExtractorDeps): Extractor {
-  const { db, hub, sessionId, llm, config } = deps;
-  const prompt = { ...loadPrompt("extract", config.extract_prompt), model: config.extract_model };
+  const { db, hub, sessionId, llm } = deps;
+  // Loaded here too, so a missing prompt version refuses the session before anything starts.
+  const initialPrompt = { ...loadPrompt("extract", deps.config.extract_prompt), model: deps.config.extract_model };
   let cursorT = 0;
 
   async function run(upTo: number): Promise<void> {
     try {
+      const config = await liveConfig(db, sessionId, ExtractConfig, deps.config);
+      const prompt = livePrompt("extract", config.extract_prompt, config.extract_model, initialPrompt);
       const from = Math.max(0, cursorT - config.context_tail_s - SEGMENT_MARGIN_S);
       const to = Number.isFinite(upTo) ? upTo : undefined;
       // A line that ends after the boundary belongs to the next run, as it would have live.
@@ -60,7 +64,7 @@ export function createExtractor(deps: ExtractorDeps): Extractor {
   }
 
   // The final run extracts the tail said since the last tick, so a stop loses nothing.
-  return createLoop(run, { intervalS: config.extract_interval_s, finalRun: true });
+  return createLoop(run, { intervalS: deps.config.extract_interval_s, finalRun: true });
 }
 
 /** Reads the session's extraction settings; null means this session does not extract. Throws on a bad config or an unknown prompt version. */

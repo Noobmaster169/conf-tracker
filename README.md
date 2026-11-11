@@ -38,6 +38,21 @@ delete is for good.
 | `DELETE /sessions/:id` | Removes a video with its transcript, voices, claims, timeline, summaries and model calls. Refused (409) while it runs or has replays. The recording kept by the speech service stays on the box. |
 | `DELETE /stages/:id` | Removes a stage and its schedule. Refused (400) while a video is on it or still holds a stretch of its timeline; hide it instead (`PUT /stages/:id`). People stay. |
 
+## Running it with no access to the box
+
+`CLAUDE.md` is the guide; `ops/ct` is the tool (`ops/ct help`). In short, with the same bearer key
+(`backend/src/routes/ops.routes.ts`):
+
+| Call | What it does |
+| --- | --- |
+| `GET /ops/status` | The api, the model proxy, speech, model calls of the last hour, and the box's last report of itself: the commit deployed, containers, disk, GPU, log tails. |
+| `GET /ops/logs?limit=&level=&module=&contains=` | The api's own newest log lines. |
+| `POST /ops/sql` | `{ "sql": "select ..." }`, read-only, 500 rows at most. |
+| `GET /ops/prompts`, `PUT /ops/prompts/:step/:version` | Every prompt version and where it comes from; registers one (`{ "text", "model"? }`) with no build. |
+| `GET /ops/config`, `PATCH /ops/config` | The config a new video starts from: every key with its default, and what is set over them. |
+| `PATCH /sessions/:id/config` | Changes a video's settings while it runs; its loops read them at their next run. A null value takes a key back to its default. |
+| `POST /ops/jobs`, `GET /ops/jobs/:id` | Asks the box to do one of a fixed list of things (`GET /ops/jobs/verbs`): container logs, a restart, a new token in `.env`, a forced deploy. The box takes it within three minutes. |
+
 Started from yt-stream at `bdb3240` (`/root/ai/fiber/yt-stream`).
 
 Three packages, run from inside each. Never run commands at the root.
@@ -76,7 +91,7 @@ in the file, so every page has something to show. `pnpm simulate` without the fl
 llm-proxy, which is the quickest way to judge the prompts.
 
 Tests: `pnpm test` in `backend/` (needs the compose Postgres; database `conf_tracker_test`),
-`pnpm test` in `frontend/`, `.venv/bin/pytest -q` in `proxy/`, `bash deploy/test-auto-deploy.sh`.
+`pnpm test` in `frontend/`, `.venv/bin/pytest -q` in `proxy/`, `bash deploy/test-auto-deploy.sh` (it puts a fake `docker` and `curl` first on its own `PATH`).
 
 Progress and the current phase: `docs/PROGRESS.md`.
 

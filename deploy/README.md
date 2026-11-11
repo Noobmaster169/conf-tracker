@@ -26,6 +26,34 @@ running stack (compose, `.env`, `ngrok.yml`, runner scripts, logs, the `.deploye
 Public URL of the api: `https://situation-courier-sulfate.ngrok-free.dev` (the dev domain of conf-tracker's own ngrok account).
 `GET /health` needs no key; everything else needs `Authorization: Bearer <API_SHARED_SECRET>`.
 
+## Without the box
+
+During the conference nobody can log in here. Everything below "Day to day" that starts with `../vps/monash.sh` has
+an equivalent that does not:
+
+| With a shell | Without one |
+| --- | --- |
+| `docker compose ps`, `.deployed`, `tail deploy.log`, `tail speech.log`, `df`, `nvidia-smi` | `ops/ct status` (the box posts all of it to the api on every cron pass) |
+| `docker compose logs api` | `ops/ct logs 200` (kept in the api's memory), or `ops/ct job logs '{"service":"api"}'` after a restart |
+| `docker compose logs llm-proxy` | `ops/ct job logs '{"service":"llm-proxy","lines":300}'` |
+| `docker compose restart llm-proxy` | `ops/ct job restart '{"service":"llm-proxy"}'` |
+| editing `CLAUDE_CODE_OAUTH_TOKEN` in `.env` | `ops/ct job set-env '{"key":"CLAUDE_CODE_OAUTH_TOKEN","value":"..."}'` |
+| `rm ~/conf-tracker/.deployed` | `ops/ct job redeploy` |
+| `psql` to look | `ops/ct sql "select ..."` |
+| `psql` to change, or anything else | a one-shot script, `deploy/ops.d/README.md` |
+
+How it works: `auto-deploy.sh` runs `box-ops.py` from the clone on every pass. It takes the jobs queued in the api
+(`POST /ops/jobs`; a fixed list of verbs, never a shell line), runs each new `deploy/ops.d/*.sh` once, and posts a
+report of the box to `POST /ops/box-report`. It reaches the api on loopback with the key in `.env`. Its own log is
+`~/conf-tracker/box-ops.log` (`ops/ct job tail '{"file":"ops"}'`).
+
+Files `auto-deploy.sh` keeps in `~/conf-tracker`: `.deployed` (the commit running), `.failed` (a commit and how many
+times it failed; three means given up until main moves), `.deferred` (a commit held back because a video is running),
+`.force` (a `deploy-now` job asked for the next deploy not to wait), `.ops-done` and `ops-out/` (one-shot scripts).
+
+What still needs a person at the box: the tunnel being down (then the api cannot be reached at all), the cron line or
+the box itself being gone, and `API_SHARED_SECRET` or `PG_PASSWORD`.
+
 ## Day to day
 
 ```bash
@@ -56,10 +84,16 @@ accept on `localhost`, so open it as `localhost`, not by another host name. Afte
 
 A push to `main` reaches the box within three minutes: `auto-deploy.sh` fetches, and when
 `origin/main` differs from `~/conf-tracker/.deployed` it rebuilds the api image when `backend/`
-changed, the proxy image when `proxy/` changed and the web image when `frontend/` changed. The
-marker is written only after the build and `up` succeed, so a failed deploy is logged as
-`build failed at <sha>` and retried on the next run. Force a full redeploy with
-`../vps/monash.sh 'rm ~/conf-tracker/.deployed'`. The script never writes `.env`, never
+changed, the proxy image when `proxy/` changed and the web image when `frontend/` changed.
+
+- A deploy that would restart the api waits while a video is running, because the restart would end it. It goes out
+  on the first pass with none running; a `deploy-now` job or `[deploy-now]` in the commit message sends it at once.
+- The marker is written only once the new api answers `/health`. If it does not within three minutes, the image that
+  was running is put back and the commit is not tried again (`.failed`).
+- A build that fails is logged as `build failed at <sha>`, tried three times, then left until main moves.
+- A copy of `auto-deploy.sh` or `run-ngrok.sh` that does not parse is not installed.
+
+Force a full redeploy with `ops/ct job redeploy` (or `../vps/monash.sh 'rm ~/conf-tracker/.deployed'`). The script never writes `.env`, never
 touches Postgres data and never touches speech. `bash deploy/test-auto-deploy.sh` tests it
 locally with a fake docker.
 

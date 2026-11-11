@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# Runs the live stack from anywhere, through its api. Nothing here needs the box.
+#   ops/ct help
+# Reads BACKEND_URL and API_SHARED_SECRET from frontend/.env.prod (or the file named by CT_ENV) and never prints them.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ENV_FILE="${CT_ENV:-$ROOT/frontend/.env.prod}"
+[ -f "$ENV_FILE" ] || { echo "no $ENV_FILE: it needs BACKEND_URL and API_SHARED_SECRET of the live api" >&2; exit 1; }
+value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//'; }
+URL="$(value BACKEND_URL)"
+URL="${URL%/}"
+KEY="$(value API_SHARED_SECRET)"
+[ -n "$URL" ] && [ -n "$KEY" ] || { echo "$ENV_FILE lacks BACKEND_URL or API_SHARED_SECRET" >&2; exit 1; }
+
+# call METHOD PATH [BODY]: the answer on stdout, and a non-zero exit on an HTTP error.
+call() {
+  local method="$1" path="$2" body="${3-}" out code
+  out="$(mktemp)"
+  if ! code=$(curl -sS -m "${CT_TIMEOUT:-60}" -o "$out" -w '%{http_code}' -X "$method" \
+    -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -H 'ngrok-skip-browser-warning: 1' \
+    ${body:+--data-binary "$body"} "$URL$path"); then
+    rm -f "$out"
+    echo "could not reach the api at all: the tunnel, the box or this network is down" >&2
+    return 7
+  fi
+  cat "$out"
+  rm -f "$out"
+  if [ "$code" -ge 400 ]; then
+    echo " (HTTP $code)" >&2
+    return 22
+  fi
+}
+
+pretty() {
+  python3 -c '
+import json, sys
+raw = sys.stdin.read()
+try:
+    print(json.dumps(json.loads(raw), indent=2, ensure_ascii=False))
+except ValueError:
+    print(raw)'
+}
+
+field() { python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin)[sys.argv[1]])
+except Exception:
+    print("unreachable")' "$1"; }
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  status)
+    call GET /ops/status | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+b = d.get("box") or {}
+print("api       up %ss, %d video(s) running" % (d["api"]["uptime_s"], len(d["api"]["live"])))
+for name in ("llm_proxy", "speech"):
+    print("%-9s %s  %s" % (name, "ok" if d[name]["ok"] else "DOWN", d[name]["detail"][:100].replace("\n", " ")))
+for c in d["calls_last_hour"]:
+    print("calls     %-9s ok %-4d failed %-4d %s" % (c["step"], c["ok"], c["failed"], ("last error: " + c["last_error"][:90]) if c["last_error"] else ""))
+if not b:
+    print("box       has never reported: the deploy script that reports is not running there yet")
+    sys.exit()
+print("box       reported %ss ago%s" % (b["age_s"], "  STALE: cron, the deploy script or the box is in trouble" if b["stale"] else ""))
+same = b.get("deployed") == b.get("origin_main")
+print("deployed  %s   main %s%s" % ((b.get("deployed") or "none")[:9], (b.get("origin_main") or "?")[:9], "" if same else "   NOT YET DEPLOYED"))
+for key, label in (("held_back", "held back, a video is running"), ("failed", "gave up on (sha, tries)"), ("clone_dirty", "the clone is dirty")):
+    if b.get(key):
+        print("          %s: %s" % (label, b[key]))
+for key in ("containers", "disk", "gpu", "recordings", "speech_health", "ngrok_tunnels"):
+    print("%-13s %s" % (key, str(b.get(key)).replace("\n", "\n              ")))
+print("deploy log:\n  " + (b.get("deploy_log") or "").replace("\n", "\n  "))
+for j in d["recent_jobs"]:
+    print("job %-4s %-16s %s" % (j["id"], j["verb"], j["status"]))'
+    ;;
+  box)
+    call GET /ops/status | python3 -c '
+import json, sys
+for k, v in (json.load(sys.stdin).get("box") or {}).items():
+    print("## %s\n%s\n" % (k, v if isinstance(v, str) else json.dumps(v, indent=2)))'
+    ;;
+  logs) # ct logs [limit] [level] [module] [text]
+    call GET "/ops/logs?limit=${1:-100}&level=${2:-}&module=${3:-}&contains=${4:-}" | python3 -c '
+import json, sys
+names = {30: "info", 40: "WARN", 50: "ERROR", 60: "FATAL"}
+for l in json.load(sys.stdin):
+    rest = {k: v for k, v in l.items() if k not in ("level", "time", "pid", "hostname", "module", "msg")}
+    print(l.get("time"), names.get(l.get("level"), l.get("level")), l.get("module"), l.get("msg"), json.dumps(rest) if rest else "")'
+    ;;
+  get) call GET "$1" | pretty ;;
+  post | put | patch | delete) call "$(echo "$cmd" | tr a-z A-Z)" "$1" "${2-}" | pretty ;;
+  sql) call POST /ops/sql "$(python3 -c 'import json, sys; print(json.dumps({"sql": sys.argv[1]}))' "$1")" | pretty ;;
+  verbs) call GET /ops/jobs/verbs | pretty ;;
+  job) # ct job VERB ['{"json":"args"}']: queues it and waits for the box, which looks every three minutes.
+    verb="$1"
+    args="${2:-}"
+    [ -n "$args" ] || args='{}'
+    id=$(call POST /ops/jobs "{\"verb\":\"$verb\",\"args\":$args}" | field id)
+    [ "$id" != unreachable ] || exit 1
+    echo "job $id queued; the box takes it on its next pass (up to three minutes)" >&2
+    for _ in $(seq 1 60); do
+      sleep 10
+      state=$(call GET "/ops/jobs/$id" 2>/dev/null || true)
+      case "$(echo "$state" | field status)" in
+        done)
+          echo "$state" | field output
+          exit 0
+          ;;
+        failed)
+          echo "$state" | field output
+          echo "job $id FAILED" >&2
+          exit 1
+          ;;
+      esac
+    done
+    echo "job $id has not finished after ten minutes: 'ops/ct status' (is the box reporting?), then 'ops/ct get /ops/jobs/$id'" >&2
+    exit 1
+    ;;
+  wait-deploy) # ct wait-deploy [sha]: until the box says that commit (default: this clone's origin/main) is deployed.
+    want="${1:-$(git -C "$ROOT" rev-parse origin/main)}"
+    echo "waiting for the box to deploy $want (a pass every three minutes, then the build)" >&2
+    for _ in $(seq 1 80); do
+      line=$(call GET /ops/status 2>/dev/null | python3 -c '
+import json, sys
+try:
+    b = json.load(sys.stdin).get("box") or {}
+except Exception:
+    b = {"deployed": "unreachable"}
+print("%s|%s|%s" % (b.get("deployed") or "none", b.get("held_back") or "", b.get("failed") or ""))' || echo "unreachable||")
+      IFS='|' read -r deployed held failed <<< "$line"
+      if [ "$deployed" = "$want" ]; then
+        echo "deployed $want"
+        exit 0
+      fi
+      if [ "$held" = "$want" ]; then
+        echo "HELD BACK: a video is running and this deploy restarts the api, which would end it. It goes out by itself when none is running. 'ops/ct job deploy-now' forces it."
+        exit 2
+      fi
+      if [ "$failed" = "$want 3" ]; then
+        echo "FAILED: the box gave up on $want and kept (or put back) what was running. 'ops/ct status' shows the deploy log."
+        exit 1
+      fi
+      sleep 15
+    done
+    echo "not deployed after twenty minutes; 'ops/ct status'" >&2
+    exit 1
+    ;;
+  prompt-put) # ct prompt-put STEP VERSION FILE: registers a prompt version from a file; its frontmatter, if any, gives the model.
+    body=$(python3 -c '
+import json, re, sys
+raw = open(sys.argv[1]).read()
+body = {"text": raw}
+match = re.match(r"^---\n(.*?)\n---\n(.*)$", raw, re.S)
+if match:
+    fields = dict((k.strip(), v.strip()) for k, v in (line.split(":", 1) for line in match.group(1).splitlines() if ":" in line))
+    body = {"text": match.group(2)}
+    if fields.get("model"):
+        body["model"] = fields["model"]
+    if fields.get("max_tokens"):
+        body["max_tokens"] = int(fields["max_tokens"])
+print(json.dumps(body))' "$3")
+    call PUT "/ops/prompts/$1/$2" "$body" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print("registered %s/%s, model %s, %d characters" % (d["step"], d["version"], d["model"], len(d["text"])))'
+    ;;
+  *)
+    cat << 'HELP'
+ops/ct: the live stack, through its api. What to use for what: CLAUDE.md at the root.
+
+  status                         what is deployed, healthy, held back or failing, and the box's last report
+  box                            the box's whole last report (log tails of every piece)
+  logs [n] [level] [module] [text]   the api's own newest log lines, e.g. `logs 200 warn`
+  get PATH                       any GET: `get '/videos?all=1'`, `get /ops/prompts`, `get /ops/config`
+  post|put|patch|delete PATH [JSON]  any write: `patch /sessions/ID/config '{"extract_prompt":"v6"}'`
+  sql "select ..."               read-only SQL on the live database (500 rows at most)
+  verbs                          what the box can be asked to do
+  job VERB [JSON]                asks the box and waits for its answer: `job logs '{"service":"llm-proxy"}'`
+  wait-deploy [sha]              after a push: waits until the box runs it, or says why it does not
+  prompt-put STEP VERSION FILE   registers a prompt version without a deploy
+HELP
+    ;;
+esac
