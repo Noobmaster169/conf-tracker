@@ -40,6 +40,32 @@ test("one fresh line longer than extract_max_s is still a window of its own", ()
   expect(window.fresh.map((l) => l.text)).toEqual(["long"]);
 });
 
+/** Every window a drain would take from cursor 0: the fresh lines' texts of each. */
+const drainAll = (lines: Line[]) => {
+  const windows: string[][] = [];
+  let cursor = 0;
+  for (let w = selectWindow(lines, cursor, cfg); w; w = selectWindow(lines, cursor, cfg)) {
+    windows.push(w.fresh.map((l) => l.text));
+    cursor = w.t1;
+  }
+  return windows;
+};
+
+test("an overlapping line that ends before the window's end is fresh in that window, not skipped", () => {
+  // b runs past extract_max_s; c starts after b and ends before a does.
+  const windows = drainAll([line(0, 100, "a"), line(10, 130, "b"), line(20, 50, "c")]);
+  expect(windows).toEqual([["a", "c"], ["b"]]);
+  expect(windows.flat().sort()).toEqual(["a", "b", "c"]);
+});
+
+test("a window ends at the latest end among its lines, so a line ending later than the last one is not repeated", () => {
+  // b starts after a and ends long before it.
+  const windows = drainAll([line(0, 100, "a"), line(10, 20, "b"), line(130, 140, "c")]);
+  expect(windows).toEqual([["a", "b"], ["c"]]);
+  expect(windows.flat().sort()).toEqual(["a", "b", "c"]);
+  expect(selectWindow([line(0, 100, "a"), line(10, 20, "b")], 0, cfg)?.t1).toBe(100);
+});
+
 test("rendering: mm:ss, the speaker tag, the sections", () => {
   expect([mmss(0), mmss(65.7), mmss(3600)]).toEqual(["00:00", "01:05", "60:00"]);
   expect(renderLine(line(65.7, 70, "hello there", "S3"))).toBe("[01:05 S3] hello there");

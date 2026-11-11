@@ -38,7 +38,7 @@ export function createSessionRunner(deps: { db: Queryable; hub: Hub; connect: Sp
     const own = loops.get(sessionId) ?? [];
     loops.delete(sessionId);
     for (const loop of own) {
-      // A stop keeps only the run in flight and the final pass over everything (extractor only); an end drains the
+      // A stop keeps only the run in flight and the final drain from the cursor (extractor only); an end drains the
       // whole queue, so a finished replay's claims keep arriving. Detached either way: a stop must not wait on a model.
       if (opts.cancel) loop.cancelQueued();
       void loop

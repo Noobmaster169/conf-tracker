@@ -13,22 +13,23 @@ export interface WindowConfig {
 }
 
 /**
- * The lines since the cursor (fresh), preceded by the tail before them (context). The fresh part starts at the cursor
- * and spans at most extract_max_s (always at least one line), so an outage cannot grow one call without bound; what is
- * left is the next window's. Nothing is ever skipped.
+ * The lines since the cursor (fresh), preceded by the tail before them (context). Windows split lines by their end
+ * time: fresh is every line ending after the cursor and no later than extract_max_s past the earliest start among them
+ * (or, when none does, the line ending first), and the window ends at the latest of their ends. Lines can overlap, so
+ * one ending later is never cut off and one ending earlier never comes back: each line is fresh in exactly one window.
  */
 export function selectWindow(lines: Line[], cursorT: number, cfg: WindowConfig): Window | null {
-  const fresh: Line[] = [];
-  for (const line of lines) {
-    if (line.t1 <= cursorT) continue;
-    if (fresh.length > 0 && line.t1 - fresh[0]!.t0 > cfg.extract_max_s) break;
-    fresh.push(line);
+  const after = lines.filter((line) => line.t1 > cursorT);
+  if (after.length === 0) return null;
+  const start = Math.min(...after.map((line) => line.t0));
+  let fresh = after.filter((line) => line.t1 <= start + cfg.extract_max_s);
+  if (fresh.length === 0) {
+    const soonest = Math.min(...after.map((line) => line.t1));
+    fresh = after.filter((line) => line.t1 === soonest);
   }
-  const start = fresh[0];
-  if (!start) return null;
-  const context = lines.filter((line) => line.t1 <= start.t0 && line.t1 > start.t0 - cfg.context_tail_s);
-  const first = context[0] ?? start;
-  return { context, fresh, t0: first.t0, t1: fresh.at(-1)!.t1 };
+  const context = lines.filter((line) => line.t1 <= start && line.t1 > start - cfg.context_tail_s);
+  const t1 = Math.max(...fresh.map((line) => line.t1));
+  return { context, fresh, t0: context[0]?.t0 ?? start, t1 };
 }
 
 /** Stream seconds as mm:ss; minutes keep counting past an hour, since the model only needs an order. */
