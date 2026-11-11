@@ -67,8 +67,12 @@ export async function runExtraction(
   names: ReadonlyMap<string, string> = new Map(),
   onStage: string | null = null,
 ): Promise<ExtractResult> {
-  const { call, data } = await callStructured(deps, ExtractOutput, window, renderWindow(window, prior, names, onStage));
+  let stored: Claim[] = [];
+  // The call and its claims in one transaction: the stored cursor (the furthest answered call) never passes a window
+  // whose claims are missing.
+  const { call, data } = await callStructured(deps, ExtractOutput, window, renderWindow(window, prior, names, onStage), async (tx, answered, answer) => {
+    stored = await claims.insertMany(tx, deps.sessionId, answered.id, toClaims(answer, window, prior));
+  });
   if (!data) return { call: calls.toSummary(call, 0), claims: [] };
-  const stored = await claims.insertMany(deps.db, deps.sessionId, call.id, toClaims(data, window, prior));
   return { call: calls.toSummary(call, stored.length), claims: stored };
 }
