@@ -14,7 +14,14 @@ export async function resumePoint(db: Queryable, sessionId: string): Promise<num
   );
   const { seg, win } = rows[0]!;
   if (seg === null) return 0;
-  return floorHalf(win !== null && win < seg ? win : seg);
+  let r = win !== null && win < seg ? win : seg;
+  // Never inside a stored segment: the next leg re-reads from r, and a segment cut at r would lose its start.
+  const { rows: straddle } = await db.query<{ t0: number | null }>(
+    "select min(t0) as t0 from segments where session_id = $1 and t0 < $2 and t1 > $2",
+    [sessionId, r],
+  );
+  if (straddle[0]!.t0 !== null) r = straddle[0]!.t0;
+  return floorHalf(r);
 }
 
 /**

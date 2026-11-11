@@ -23,7 +23,8 @@ test("resume point is the segment end, lowered to the window end, rounded down t
   await inRollback(async (tx) => {
     const s = await newSession(tx);
     expect(await resumePoint(tx, s.id)).toBe(0);
-    await seg(tx, s.id, 100, 130.2);
+    await seg(tx, s.id, 100, 120);
+    await seg(tx, s.id, 120, 130.2);
     expect(await resumePoint(tx, s.id)).toBe(130);
     await win(tx, s.id, 90, 120);
     expect(await resumePoint(tx, s.id)).toBe(120);
@@ -64,5 +65,18 @@ test("speakerFloor is the highest SN, ignoring other ids; 0 when none", async ()
     for (const id of ["S1", "S4", "S12", "S2x", "guest"]) await speakers.upsert(tx, s.id, { speakerId: id, firstSeenT: 0, lastSeenT: 1 });
     await speakers.markMerged(tx, s.id, "S12", "S1");
     expect(await speakerFloor(tx, s.id)).toBe(12);
+  });
+});
+
+test("the resume point never falls inside a stored segment, so the line is re-read whole", async () => {
+  await inRollback(async (tx) => {
+    const s = await newSession(tx);
+    await seg(tx, s.id, 100, 115);
+    await seg(tx, s.id, 115, 130);
+    await win(tx, s.id, 90, 120);
+    const r = await resumePoint(tx, s.id);
+    expect(r).toBe(115);
+    await truncateAfter(tx, s.id, r);
+    expect((await segments.list(tx, s.id, {})).map((x) => [x.t0, x.t1])).toEqual([[100, 115]]);
   });
 });
