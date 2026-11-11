@@ -35,7 +35,7 @@ delete is for good.
 | `PATCH /claims/:id` | Changes any of `claim`, `kind`, `importance`, `topics`, `polarity`, `speaker_id` (null for no speaker). The quote and its time stay. |
 | `DELETE /claims/:id` | Removes a claim. |
 | `PATCH /sessions/:id` | `{ "title": "..." }`, the name on the video's card. |
-| `POST /sessions/:id/resume` | Picks up a `degraded` or `stopped` video on the same video, from the second it stopped, catching up through YouTube's rewind (on a stream with rewind; on one without, the missed stretch is filled from the recording after the stream ends). 201 with the video; 409 while it is starting, live or recovering. |
+| `POST /sessions/:id/resume` | Picks up a `degraded` or `stopped` video on the same video, from the second it stopped, catching up through YouTube's rewind (on a stream with rewind; on one without, the missed stretch is filled from the recording after the stream ends). 201 with the video as soon as it is marked `recovering` (the leg opens in the background); 409 while it is starting, live or recovering. A video that "needs attention" is still retrying: leave it, or Stop it, which records the missed stretch as a gap that is filled from the recording after the stream (see CLAUDE.md). |
 | `DELETE /sessions/:id` | Removes a video with its transcript, voices, claims, timeline, summaries and model calls. Refused (409) while it runs or has replays. The recording kept by the speech service stays on the box. |
 | `DELETE /stages/:id` | Removes a stage and its schedule. Refused (400) while a video is on it or still holds a stretch of its timeline; hide it instead (`PUT /stages/:id`). People stay. |
 

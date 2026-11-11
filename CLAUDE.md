@@ -40,6 +40,23 @@ up through YouTube's rewind (on a stream with rewind; on one without, the missed
 - A `degraded` or `stopped` video can be resumed: `ops/ct post /sessions/ID/resume`, or Resume in Admin.
 - The model proxy can restart mid-video: calls fail for some seconds and the next run picks up where it was.
 
+## "Needs attention"
+
+A video that has been `recovering` for 15 minutes also shows "Needs attention" with the last error. It is still
+retrying (every minute at most); nothing is lost that the stream's rewind or its recording can give back.
+
+- **Usually: leave it.** It keeps retrying and comes back by itself once speech or YouTube answers again. Check the
+  cause with `ops/ct status` and `ops/ct logs 200 warn`.
+- **After the stream ended**, it fills itself: once YouTube serves the recording (minutes to hours later), the next
+  retry reads what it missed from there and the video ends normally.
+- **Stop** (Admin, or `ops/ct post /sessions/ID/stop`) records the stretch it missed, from where it stopped reading to
+  now, as a gap, filled from the recording after the stream. Without a known stream clock (a recording, or a leg that
+  never started) it records nothing and says so on the video; Resume reads it instead.
+- Common errors: `speech unreachable` (speech down or restarting: `ops/ct status`; `speech-restart` only if it stays
+  down, and it ends yt-stream's videos too); `yt-dlp failed` / `no audio` (YouTube refused or the stream is off: wait,
+  or check the link); `speech service too old to resume (update yt-stream speech)` (speech ignored where to start; it
+  does **not** retry: update yt-stream's speech, then Stop and Resume).
+
 ## Shipping code
 
 1. Tests first: `pnpm test` in `backend/` (needs `docker compose -f compose.local.yaml up -d postgres`), `pnpm test`
