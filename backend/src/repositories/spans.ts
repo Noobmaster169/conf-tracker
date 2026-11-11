@@ -106,3 +106,61 @@ export async function unsummarised(db: Queryable, days = 7): Promise<{ sessionId
   );
   return rows.map((r) => ({ sessionId: r.session_id, talkId: Number(r.talk_id) }));
 }
+
+export interface RangeSpan {
+  talkId: number | null;
+  state: SpanState;
+  t0: number;
+  t1: number;
+}
+
+const sameStage = (span: Span, next: RangeSpan) => span.state === next.state && (span.state !== "talk" || span.talk_id === next.talkId);
+
+/**
+ * What was on stage from t0 to t1 is `next` (in order, inside [t0, t1]). The spans reaching into the range are trimmed
+ * to its edges, one running across it is split in two, and the ones inside it are dropped; the new ones are inserted
+ * (source tracker), joined to the span either side when it is the same talk, so a talk that went on is still one span.
+ */
+export async function rewriteRange(db: Queryable, sessionId: string, t0: number, t1: number, next: RangeSpan[]): Promise<void> {
+  const overlapping = (await list(db, sessionId)).filter((s) => s.t0 < t1 && (s.t1 === null || s.t1 > t0));
+  let before: Span | null = null;
+  let after: Span | null = null;
+  for (const span of overlapping) {
+    const startsBefore = span.t0 < t0;
+    const endsAfter = span.t1 === null || span.t1 > t1;
+    if (startsBefore && endsAfter) {
+      // Split: the part after the range is a copy of the span, starting at t1.
+      const { rows } = await db.query<Row>(
+        `insert into talk_spans (session_id, t0, t1, talk_id, state, confidence, quote, source, call_id)
+         select session_id, $2, t1, talk_id, state, confidence, quote, source, call_id from talk_spans where id = $1 returning ${COLUMNS}`,
+        [span.id, t1],
+      );
+      after = toSpan(rows[0]!);
+      before = toSpan((await db.query<Row>(`update talk_spans set t1 = $2 where id = $1 returning ${COLUMNS}`, [span.id, t0])).rows[0]!);
+    } else if (startsBefore) {
+      before = toSpan((await db.query<Row>(`update talk_spans set t1 = $2 where id = $1 returning ${COLUMNS}`, [span.id, t0])).rows[0]!);
+    } else if (endsAfter) {
+      after = toSpan((await db.query<Row>(`update talk_spans set t0 = $2 where id = $1 returning ${COLUMNS}`, [span.id, t1])).rows[0]!);
+    } else {
+      await db.query("delete from talk_spans where id = $1", [span.id]);
+    }
+  }
+  for (const [i, span] of next.entries()) {
+    if (span.t1 <= span.t0) continue;
+    if (i === 0 && before && span.t0 === t0 && sameStage(before, span)) {
+      const bridges = next.length === 1 && after !== null && span.t1 === t1 && sameStage(after, span);
+      // One talk all the way across: the split is undone.
+      if (bridges) await db.query("delete from talk_spans where id = $1", [after!.id]);
+      await db.query("update talk_spans set t1 = $2 where id = $1", [before.id, bridges ? after!.t1 : span.t1]);
+      continue;
+    }
+    if (i === next.length - 1 && after && span.t1 === t1 && sameStage(after, span)) {
+      await db.query("update talk_spans set t0 = $2 where id = $1", [after.id, span.t0]);
+      continue;
+    }
+    await db.query(
+      "insert into talk_spans (session_id, t0, t1, talk_id, state, source) values ($1, $2, $3, $4, $5, 'tracker')",
+      [sessionId, span.t0, span.t1, span.talkId, span.state],
+    );
+  }
+}

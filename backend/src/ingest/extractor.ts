@@ -126,3 +126,41 @@ export function extractorFactory(llm: LlmClient): ExtractorFactory {
     return createExtractor({ db, hub, sessionId, llm, config: parsed, resumeAt });
   };
 }
+
+/** How far either side of a gap the claims it is deduped against may lie. */
+const RANGE_DEDUPE_S = 300;
+
+/**
+ * Extracts a stretch the live extractor never saw (a filled gap): window after window from t0 until the lines end at
+ * t1, by the same rules as live, deduped against the claims around the stretch rather than the latest ones. Its
+ * cursor is its own (the answered windows ending inside the stretch), so it resumes after a failure, and it never reads
+ * or moves the video's: its windows end at or before t1, below where the video's extraction already is. True when done.
+ */
+export async function extractRange(deps: Omit<ExtractorDeps, "resumeAt">, t0: number, t1: number): Promise<boolean> {
+  const { db, hub, sessionId, llm } = deps;
+  const config = await liveConfig(db, sessionId, ExtractConfig, deps.config);
+  if (!config.extract) return true;
+  const prompt = livePrompt("extract", config.extract_prompt, config.extract_model, { ...loadPrompt("extract", deps.config.extract_prompt), model: deps.config.extract_model });
+  let cursorT = await calls.answeredWithin(db, sessionId, t0, t1);
+  try {
+    while (cursorT < t1) {
+      const from = Math.max(0, cursorT - config.context_tail_s - SEGMENT_MARGIN_S);
+      // Only the stretch's own lines are fresh: what ends after t1 belongs to the video's extraction, already done.
+      const rows = (await segments.list(db, sessionId, { from, to: t1 })).filter((s) => s.t1 <= t1);
+      const window = selectWindow(segmentsToLines(rows), cursorT, config);
+      if (!window) return true;
+      const prior = await claims.around(db, sessionId, t0 - RANGE_DEDUPE_S, t1 + RANGE_DEDUPE_S);
+      const names = labelMap(await speakers.list(db, sessionId), await people.forSession(db, sessionId));
+      const context = await loadStageContext(db, sessionId, window.t1);
+      const result = await runExtraction({ db, llm, sessionId, prompt }, window, prior, names, context ? onStageText(context) : null);
+      hub.publish(sessionId, { type: "call", data: result.call });
+      if (result.claims.length > 0) hub.publish(sessionId, { type: "claims.new", data: result.claims });
+      if (result.call.error !== null) return false;
+      cursorT = window.t1;
+    }
+    return true;
+  } catch (error) {
+    log.error({ sessionId, t0, t1, err: error instanceof Error ? error.message : String(error) }, "extracting a gap failed");
+    return false;
+  }
+}

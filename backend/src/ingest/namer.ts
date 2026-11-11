@@ -30,8 +30,11 @@ export interface NamerDeps {
   resumeAt?: number;
 }
 
-/** One per live session: every interval of stream time, when someone in the last few minutes has no name, the model is asked who they are. */
-export function createNamer(deps: NamerDeps): Loop {
+/**
+ * One naming run: when someone in the few minutes up to `upTo` has no name, the model is asked who they are. The same
+ * window is never asked about twice by one run function.
+ */
+export function createNameRun(deps: Omit<NamerDeps, "resumeAt">): (upTo: number) => Promise<void> {
   const { db, hub, sessionId, llm } = deps;
   // Loaded here too, so a missing prompt version refuses the session before anything starts.
   const initialPrompt = { ...loadPrompt("name", deps.config.name_prompt), model: deps.config.name_model };
@@ -68,6 +71,12 @@ export function createNamer(deps: NamerDeps): Loop {
     }
   }
 
+  return run;
+}
+
+/** One per live session: every interval of stream time, when someone in the last few minutes has no name, the model is asked who they are. */
+export function createNamer(deps: NamerDeps): Loop {
+  const run = createNameRun(deps);
   // No final run: a name found after the stop would help nobody, and it would cost a call.
   // Only the newest window is worth naming: a replay faster than the model would otherwise name voices minutes late.
   return createLoop(run, { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true, startAfter: deps.resumeAt ?? 0 });

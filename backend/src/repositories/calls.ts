@@ -106,3 +106,13 @@ export async function lastAnsweredWindow(db: Queryable, sessionId: string, step:
   );
   return rows[0]?.t1 ?? 0;
 }
+
+/** The furthest answered extract window ending inside (t0, t1]: how far a gap's own extraction got. t0 when none did. */
+export async function answeredWithin(db: Queryable, sessionId: string, t0: number, t1: number): Promise<number> {
+  const { rows } = await db.query<{ t1: number | null }>(
+    `select max(window_t1)::float8 as t1 from llm_calls
+      where session_id = $1 and step = 'extract' and error is null and window_t1 > $2 and window_t1 <= $3`,
+    [sessionId, t0, t1],
+  );
+  return rows[0]?.t1 ?? t0;
+}

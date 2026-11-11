@@ -1,4 +1,4 @@
-import type { Session, SpeechEvent, StartMessage } from "../contracts";
+import type { Gap, Session, SpeechEvent, StartMessage } from "../contracts";
 import type { Queryable } from "../db";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
@@ -10,6 +10,7 @@ import { resumePoint, speakerFloor, truncateAfter } from "../repositories/resume
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
 import * as speakers from "../repositories/speakers";
+import { runGapLeg } from "./gap-leg";
 import type { Loop, LoopFactory } from "./loop";
 import { createSpeakerTracker, type SpeakerTracker } from "./speaker-tracker";
 import type { SpeechConnector, SpeechLink } from "./speech-client";
@@ -37,6 +38,12 @@ export interface SessionRunner {
   busy(): string[];
   /** Registers background work on a video (a sweep's drain): it counts as busy, and a start or resume waits for it before opening a leg. */
   hold(sessionId: string, work: Promise<unknown>): void;
+  /**
+   * Transcribes a gap of a video this process is not feeding, from its recording, on a leg of its own that stores what
+   * it reads but never drives the video. True when the whole stretch was read; false (try again later) otherwise, and
+   * at once while the video has a main leg or another gap leg.
+   */
+  fillGap(sessionId: string, gap: Gap): Promise<boolean>;
 }
 
 /** One connection to speech for a video. `dead` once it failed, ended or was stopped: nothing from it counts after. */
@@ -96,6 +103,19 @@ export function createSessionRunner(deps: {
   const holdsSettled = async (id: string) => {
     while (holds.get(id)?.size) await Promise.allSettled([...holds.get(id)!]);
   };
+  /** Videos with a gap leg open. */
+  const gapLegs = new Set<string>();
+  function hold(sessionId: string, work: Promise<unknown>): void {
+    const set = holds.get(sessionId) ?? new Set<Promise<unknown>>();
+    holds.set(sessionId, set);
+    const tracked: Promise<unknown> = work
+      .catch(() => undefined)
+      .finally(() => {
+        set.delete(tracked);
+        if (set.size === 0 && holds.get(sessionId) === set) holds.delete(sessionId);
+      });
+    set.add(tracked);
+  }
   // Event numbering outlives a Video: after a stop and an instant resume, the old leg's append may still be in flight
   // with a number the database does not show yet, so the new Video continues after it instead of reusing it.
   const seqs = new Map<string, number>();
@@ -510,16 +530,28 @@ export function createSessionRunner(deps: {
     },
     live: () => [...videos.keys()],
     busy: () => [...new Set([...videos.keys(), ...flushing.keys(), ...holds.keys()])],
-    hold(sessionId, work) {
-      const set = holds.get(sessionId) ?? new Set<Promise<unknown>>();
-      holds.set(sessionId, set);
-      const tracked: Promise<unknown> = work
-        .catch(() => undefined)
-        .finally(() => {
-          set.delete(tracked);
-          if (set.size === 0 && holds.get(sessionId) === set) holds.delete(sessionId);
-        });
-      set.add(tracked);
+    hold,
+    fillGap(sessionId, gap) {
+      if (videos.has(sessionId) || gapLegs.has(sessionId) || gap.session_id !== sessionId) return Promise.resolve(false);
+      gapLegs.add(sessionId);
+      const append = async (id: string, event: SpeechEvent) => {
+        if (!seqs.has(id)) {
+          const stored = await events.maxSeq(db, id);
+          if (!seqs.has(id)) seqs.set(id, stored);
+        }
+        const seq = seqs.get(id)! + 1;
+        seqs.set(id, seq);
+        await events.append(db, id, seq, event.type, event);
+      };
+      const work = runGapLeg({ db, hub, connect, append }, gap)
+        .catch((error: unknown) => {
+          log.error({ sessionId, gapId: gap.id, err: errorText(error) }, "a gap leg failed");
+          return false;
+        })
+        .finally(() => gapLegs.delete(sessionId));
+      // Held: a start or resume waits for it, so the video never has a main leg and a gap leg at once.
+      hold(sessionId, work);
+      return work;
     },
   };
 }

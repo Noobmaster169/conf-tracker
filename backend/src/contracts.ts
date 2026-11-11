@@ -134,6 +134,8 @@ export const Gap = z.object({
   t1: z.number(),
   filled_at: z.string().nullable(),
   created_at: z.string(),
+  // Why the recording could not fill it, once filling was given up.
+  note: z.string().nullable().default(null),
 });
 export type Gap = z.infer<typeof Gap>;
 

@@ -8,9 +8,10 @@ interface Row {
   t1: number;
   filled_at: Date | null;
   created_at: Date;
+  note: string | null;
 }
 
-const COLUMNS = "id, session_id, t0, t1, filled_at, created_at";
+const COLUMNS = "id, session_id, t0, t1, filled_at, created_at, note";
 
 const toGap = (row: Row): Gap =>
   Gap.parse({ ...row, id: Number(row.id), filled_at: row.filled_at?.toISOString() ?? null, created_at: row.created_at.toISOString() });
@@ -29,4 +30,9 @@ export async function open(db: Queryable, sessionId: string): Promise<Gap[]> {
 
 export async function filled(db: Queryable, gapId: number): Promise<void> {
   await db.query("update session_gaps set filled_at = now() where id = $1", [gapId]);
+}
+
+/** Filling was given up: the gap stays open, with why. */
+export async function note(db: Queryable, gapId: number, text: string): Promise<void> {
+  await db.query("update session_gaps set note = $2 where id = $1", [gapId, text]);
 }

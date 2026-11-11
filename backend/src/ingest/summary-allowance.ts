@@ -1,0 +1,24 @@
+import type { Queryable } from "../db";
+
+/** One summarize model call per talk and video in this time, and none after MAX_SUMMARY_FAILS failed ones. */
+const SUMMARY_BACKOFF_MS = 60 * 60 * 1000;
+const MAX_SUMMARY_FAILS = 5;
+
+/**
+ * Whether a background summary of this talk may call the model now: never after five failures, and at most once an
+ * hour. With `failuresOnly` (a summary written again because its talk changed) only a failed call starts the hour:
+ * a talk whose summary was just written fine may be written again, a broken one is not hammered.
+ */
+export async function summaryAllowed(db: Queryable, sessionId: string, talkId: number, nowMs: number, opts: { failuresOnly?: boolean } = {}): Promise<boolean> {
+  const { rows } = await db.query<{ fails: string; last: Date | null; last_fail: Date | null }>(
+    `select count(*) filter (where error is not null) as fails, max(created_at) as last,
+            max(created_at) filter (where error is not null) as last_fail
+       from llm_calls where session_id = $1 and step = 'summarize' and talk_id = $2`,
+    [sessionId, talkId],
+  );
+  const row = rows[0];
+  if (!row) return true;
+  if (Number(row.fails) >= MAX_SUMMARY_FAILS) return false;
+  const last = opts.failuresOnly ? row.last_fail : row.last;
+  return !last || last.getTime() <= nowMs - SUMMARY_BACKOFF_MS;
+}

@@ -6,7 +6,9 @@ import type { Hub } from "../realtime/hub";
 import * as calls from "../repositories/calls";
 import * as spans from "../repositories/spans";
 import { type Extractor, extractorFactory } from "./extractor";
+import { fillGaps } from "./gap-filler";
 import type { SessionRunner } from "./session-runner";
+import { summaryAllowed } from "./summary-allowance";
 import type { Summarize } from "./summarizer";
 
 const log = childLogger({ module: "sweeper" });
@@ -15,14 +17,24 @@ const log = childLogger({ module: "sweeper" });
 const SCAN_DAYS = 7;
 /** A video whose latest extract call failed is left alone this long. */
 const EXTRACT_BACKOFF_MS = 15 * 60 * 1000;
-/** One summarize model call per talk and video in this time, and none after MAX_SUMMARY_FAILS failed ones. */
-const SUMMARY_BACKOFF_MS = 60 * 60 * 1000;
-const MAX_SUMMARY_FAILS = 5;
 
 export interface SweepReport {
   extracted: string[];
   summarised: number[];
+  /** Videos with a gap filled. */
+  filled: string[];
 }
+
+/** A segment of video `s` inside one of its open gaps: the gap filler's to extract, not the video's own extractor's. */
+const IN_OPEN_GAP = `exists (select 1 from session_gaps sg where sg.session_id = g.session_id and sg.filled_at is null and g.t1 > sg.t0 and g.t0 < sg.t1)`;
+
+/**
+ * True when video `s` has lines its own extraction has not reached: the end of its last line (outside open gaps) is past
+ * its furthest answered extract window.
+ */
+const OWES_EXTRACTION = `coalesce((select max((w->>'t1')::float8) from jsonb_array_elements((select words from segments g where g.session_id = s.id and not ${IN_OPEN_GAP} order by t1 desc limit 1)) w),
+                       (select max(t1) from segments g where g.session_id = s.id and not ${IN_OPEN_GAP}), 0)
+            > coalesce((select max(window_t1) from llm_calls where session_id = s.id and step = 'extract' and error is null), 0)`;
 
 export interface SweeperDeps {
   db: Queryable;
@@ -54,9 +66,7 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
     const { rows } = await db.query<{ id: string; config: Record<string, unknown> }>(
       `select s.id, s.config from sessions s
         where s.created_at > now() - make_interval(days => $1::int)
-          and coalesce((select max((w->>'t1')::float8) from jsonb_array_elements((select words from segments where session_id = s.id order by t1 desc limit 1)) w),
-                       (select max(t1) from segments where session_id = s.id), 0)
-            > coalesce((select max(window_t1) from llm_calls where session_id = s.id and step = 'extract' and error is null), 0)
+          and ${OWES_EXTRACTION}
           and not exists (select 1 from (select error, created_at from llm_calls where session_id = s.id and step = 'extract' order by id desc limit 1) l
                            where l.error is not null and l.created_at > $2::timestamptz)
         order by s.created_at`,
@@ -85,17 +95,31 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
     }
   }
 
-  /** At most one model call per talk an hour, and none once it has failed MAX_SUMMARY_FAILS times. */
-  async function summaryAllowed(sessionId: string, talkId: number): Promise<boolean> {
-    const { rows } = await db.query<{ fails: string; last: Date | null }>(
-      `select count(*) filter (where error is not null) as fails, max(created_at) as last
-         from llm_calls where session_id = $1 and step = 'summarize' and talk_id = $2`,
-      [sessionId, talkId],
+  /**
+   * Stopped videos with gaps still to try, once their own extraction owes nothing (or they do not extract): the gaps'
+   * windows must lie below the video's extract cursor, never ahead of lines it still owes.
+   */
+  async function fillAllGaps(report: SweepReport): Promise<void> {
+    const { rows } = await db.query<{ id: string }>(
+      `select s.id from sessions s
+        where s.created_at > now() - make_interval(days => $1::int) and s.status = 'stopped'
+          and exists (select 1 from session_gaps sg where sg.session_id = s.id and sg.filled_at is null and sg.note is null)
+          and (coalesce(s.config->>'extract', 'true') = 'false' or not (${OWES_EXTRACTION}))
+        order by s.created_at`,
+      [SCAN_DAYS],
     );
-    const row = rows[0];
-    if (!row) return true;
-    if (Number(row.fails) >= MAX_SUMMARY_FAILS) return false;
-    return !row.last || row.last.getTime() <= now() - SUMMARY_BACKOFF_MS;
+    for (const { id } of rows) {
+      if (runner.busy().includes(id)) continue;
+      const work = (async () => {
+        try {
+          if ((await fillGaps({ db, hub, llm, summarize, runner, config: deps.config, now }, id)) > 0) report.filled.push(id);
+        } catch (error) {
+          log.error({ sessionId: id, err: errorText(error) }, "filling a video's gaps failed");
+        }
+      })();
+      runner.hold(id, work);
+      await work;
+    }
   }
 
   async function summariseTalks(report: SweepReport): Promise<void> {
@@ -103,7 +127,7 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
       if (runner.busy().includes(sessionId)) continue;
       const work = (async () => {
         try {
-          if (!(await summaryAllowed(sessionId, talkId))) return;
+          if (!(await summaryAllowed(db, sessionId, talkId, now()))) return;
           if (await summarize(sessionId, talkId)) report.summarised.push(talkId);
         } catch (error) {
           log.error({ sessionId, talkId, err: errorText(error) }, "sweeping a talk's summary failed");
@@ -116,11 +140,13 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
 
   return {
     async sweep() {
-      const report: SweepReport = { extracted: [], summarised: [] };
+      const report: SweepReport = { extracted: [], summarised: [], filled: [] };
       if (running) return report;
       running = true;
       try {
         await extractBacklogs(report);
+        // After the backlogs, so a gap is filled only behind a finished extraction; before the summaries, which it may redo.
+        await fillAllGaps(report);
         await summariseTalks(report);
       } catch (error) {
         log.error({ err: errorText(error) }, "sweep failed");

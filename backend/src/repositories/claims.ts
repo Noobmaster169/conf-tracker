@@ -121,3 +121,12 @@ export async function remove(db: Queryable, id: number): Promise<boolean> {
   const { rowCount } = await db.query("delete from claims where id = $1", [id]);
   return (rowCount ?? 0) > 0;
 }
+
+/** The claims placed between `from` and `to` (by t0), oldest first, at most `limit`: what a stretch is deduped against. */
+export async function around(db: Queryable, sessionId: string, from: number, to: number, limit = 100): Promise<Claim[]> {
+  const { rows } = await db.query<Row>(
+    `select ${COLUMNS} from claims where session_id = $1 and t0 is not null and t0 >= $2 and t0 <= $3 order by t0 asc, id asc limit $4`,
+    [sessionId, from, to, limit],
+  );
+  return rows.map(toClaim);
+}

@@ -21,7 +21,7 @@ const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
 const NO_CLAIMS = JSON.stringify({ claims: [] });
 const runnerOf = (busy: string[] = []): SessionRunner => ({
   start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")),
-  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => busy, hold: () => {},
+  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => busy, hold: () => {}, fillGap: () => Promise.resolve(false),
 });
 const say = (db: Parameters<typeof segments.insert>[0], sessionId: string, t0: number) =>
   segments.insert(db, sessionId, { t0, t1: t0 + 5, text: `w${t0}`, words: [{ w: `w${t0}`, t0, t1: t0 + 1, p: 1, speaker_id: "S1" }] });
@@ -124,7 +124,7 @@ test("a sweep that fails reports nothing instead of throwing, and a sweep never 
   await inRollback(async (tx) => {
     const broken = { query: () => Promise.reject(new Error("db gone")) } as unknown as typeof tx;
     const failing = createSweeper({ db: broken, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize: noSummary, runner: runnerOf() });
-    expect(await failing.sweep()).toEqual({ extracted: [], summarised: [] });
+    expect(await failing.sweep()).toEqual({ extracted: [], summarised: [], filled: [] });
 
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -132,7 +132,7 @@ test("a sweep that fails reports nothing instead of throwing, and a sweep never 
     const slow = { query: async (...args: unknown[]) => { queries += 1; await gate; return (tx.query as (...a: unknown[]) => unknown)(...args); } } as unknown as typeof tx;
     const sweeper = createSweeper({ db: slow, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize: noSummary, runner: runnerOf() });
     const first = sweeper.sweep();
-    expect(await sweeper.sweep()).toEqual({ extracted: [], summarised: [] });
+    expect(await sweeper.sweep()).toEqual({ extracted: [], summarised: [], filled: [] });
     expect(queries).toBe(1);
     release();
     await first;
