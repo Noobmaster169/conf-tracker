@@ -19,6 +19,7 @@ interface VideoRow extends sessions.SessionRow {
   now_title: string | null;
   claim_count: number;
   duration_s: number;
+  behind_s: number | null;
 }
 
 /** Every video ever tracked, newest first. Replays are experiments and are left out, and so are a hidden stage's videos unless asked for. */
@@ -26,7 +27,10 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
   const { rows } = await db.query<VideoRow>(
     `select ${S_COLUMNS}, ${STAGE_JSON}, n.id as now_id, n.title as now_title,
        (select count(*) from claims c where c.session_id = s.id and c.status = 'ok')::int as claim_count,
-       coalesce((select max(t1) from segments where session_id = s.id), 0)::float8 as duration_s
+       coalesce((select max(t1) from segments where session_id = s.id), 0)::float8 as duration_s,
+       case when s.status in ('starting', 'live', 'recovering') then
+         (select (e.payload->>'behind_s')::float8 from events e where e.session_id = s.id and e.type = 'health' order by e.seq desc limit 1)
+       end as behind_s
      from sessions s
      left join stages g on g.id = s.stage_id
      left join lateral (
@@ -46,6 +50,7 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
       claim_count: row.claim_count,
       duration_s: row.duration_s,
       gaps: open.get(row.id) ?? [],
+      behind_s: row.behind_s,
     }),
   );
 }

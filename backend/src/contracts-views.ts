@@ -36,6 +36,8 @@ export const VideoCard = z.object({
   duration_s: z.number(),
   // Stretches of the stream no leg covered and nothing has filled yet.
   gaps: z.array(Gap),
+  // How far behind the stream a running video's last stored health said it was; null when stopped or unknown.
+  behind_s: z.number().nullable(),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

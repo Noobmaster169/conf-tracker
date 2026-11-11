@@ -12,6 +12,7 @@ import { createSummarizer } from "../src/ingest/summarizer";
 import { createTracker } from "../src/ingest/tracker";
 import { ExtractConfig } from "../src/contracts";
 import { createHub } from "../src/realtime/hub";
+import * as events from "../src/repositories/events";
 import * as gaps from "../src/repositories/gaps";
 import * as segments from "../src/repositories/segments";
 import * as sessions from "../src/repositories/sessions";
@@ -210,6 +211,13 @@ test("a video and its snapshot list the stretches not covered yet, and the snaps
     const app = createApp({ db: tx, hub, runner: noRunner });
     const video = (await request(app).get("/videos").set(auth)).body.find((v: { session: { id: string } }) => v.session.id === session.id);
     expect(video.gaps).toMatchObject([{ id: open.id, t0: 100, t1: 220, filled_at: null }]);
+    // No health stored yet: null; then the last stored health of the running video.
+    expect(video.behind_s).toBeNull();
+    await sessions.markStarted(tx, session.id, { startedAt: "2026-11-16T09:00:00.000Z", models: {} });
+    await events.append(tx, session.id, 1, "health", { type: "health", t: 4, behind_s: 300 });
+    await events.append(tx, session.id, 2, "health", { type: "health", t: 5, behind_s: 240 });
+    const running = (await request(app).get("/videos").set(auth)).body.find((v: { session: { id: string } }) => v.session.id === session.id);
+    expect(running.behind_s).toBe(240);
     const snapshot = await request(app).get(`/sessions/${session.id}`).set(auth);
     expect(snapshot.body.gaps).toMatchObject([{ id: open.id }]);
     expect(snapshot.body.health.behind_s).toBe(240);
