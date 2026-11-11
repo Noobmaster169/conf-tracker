@@ -155,17 +155,23 @@ export function talkAt(state: Pick<SessionState, "spans" | "talks">, t: number |
 }
 
 export interface StateLabel {
-  label: "Live" | "Catching up" | "Recovering" | "Needs attention" | "Ended" | "Stopped";
+  label: "Starting" | "Live" | "Catching up" | "Recovering" | "Needs attention" | "Ended" | "Stopped";
   detail: string | null;
 }
 
 const CATCHING_UP_S = 120;
 
+/** HH:MM UTC: the same text on the server and in any browser, so the page hydrates without a mismatch. */
 const clock = (iso: string | null): string => {
   const at = iso ? new Date(iso) : null;
   if (!at || Number.isNaN(at.getTime())) return "";
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return `${String(at.getUTCHours()).padStart(2, "0")}:${String(at.getUTCMinutes()).padStart(2, "0")} UTC`;
 };
+
+/** A video an admin can feed again from where it stopped: degraded or stopped, with a stream to read. */
+export function canResume(session: Pick<Session, "status" | "source_url">): boolean {
+  return (session.status === "degraded" || session.status === "stopped") && Boolean(session.source_url);
+}
 
 /** What a reader or an admin should make of a video right now, and what part of the stream is still missing. */
 export function sessionState(session: Session, health: Pick<Health, "behind_s"> | null, gaps: Gap[]): StateLabel {
@@ -175,6 +181,7 @@ export function sessionState(session: Session, health: Pick<Health, "behind_s"> 
   else if (session.status === "recovering") state = { label: "Recovering", detail: `since ${clock(session.recovering_since)}`.trim() };
   else if (session.status === "degraded") state = { label: "Needs attention", detail: "The stream was interrupted" };
   else if (session.status === "stopped") state = session.error ? { label: "Stopped", detail: session.error } : { label: "Ended", detail: null };
+  else if (session.status === "starting") state = { label: "Starting", detail: null };
   else if (behind !== null && behind >= CATCHING_UP_S) state = { label: "Catching up", detail: `${Math.floor(behind / 60)} min behind` };
   else state = { label: "Live", detail: null };
 

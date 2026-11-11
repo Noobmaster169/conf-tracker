@@ -6,7 +6,7 @@ import { LiveBadge, Page, PageHeader } from "@/components/ui/bits";
 import { isLive } from "@/components/ui/video-card";
 import { listStages, listVideos, type StageWithTalks, type VideoCard } from "@/lib/api-client";
 import { formatDay, plural } from "@/lib/format";
-import { sessionState } from "@/lib/session-state";
+import { canResume, sessionState } from "@/lib/session-state";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +28,8 @@ function StageSelect({ stages, value, empty }: { stages: StageWithTalks[]; value
 function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[] }) {
   const { session } = video;
   const live = isLive(video);
-  const state = sessionState(session, null, video.gaps);
-  const canResume = session.status === "degraded" || (session.status === "stopped" && video.gaps.length > 0);
+  const state = sessionState(session, { behind_s: video.behind_s }, video.gaps);
+  const resumable = canResume(session);
   const talks = stages.find((s) => s.stage.id === session.stage_id)?.talks ?? [];
   return (
     <li className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -64,7 +64,7 @@ function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[
             <SubmitButton quiet working="Setting">Set on stage</SubmitButton>
           </form>
         )}
-        {canResume && (
+        {resumable && (
           <form action={resumeVideoAction}>
             <input type="hidden" name="id" value={session.id} />
             <SubmitButton working="Resuming">Resume</SubmitButton>

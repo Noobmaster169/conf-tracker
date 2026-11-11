@@ -198,7 +198,7 @@ test("a live segment the snapshot already delivered records no arrival, so the d
 });
 
 import type { Gap, Health } from "./api/schemas";
-import { sessionState } from "./session-state";
+import { canResume, sessionState } from "./session-state";
 
 const healthAt = (behind_s: number | null): Health => ({ t: 1, lag_s: 0, gpu_ms_asr: 0, gpu_ms_diar: 0, buffer_s: 0, behind_s, received_at: "now" });
 const gap = (t0: number, t1: number, note: string | null = null): Gap => ({ id: t0, session_id: "s", t0, t1, filled_at: null, created_at: "2026-09-23T00:00:00.000Z", note, stage: null, stage_at: null, tried_at: null, since: null });
@@ -212,7 +212,8 @@ test("sessionState says live, catching up, recovering, needs attention, ended or
   const since = "2026-09-23T10:05:00.000Z";
   const recovering = sessionState(as({ status: "recovering", recovering_since: since }), null, []);
   expect(recovering.label).toBe("Recovering");
-  expect(recovering.detail).toMatch(/^since \d\d:\d\d$/);
+  // In UTC, said so: the server and the browser render the same text whatever their time zones.
+  expect(recovering.detail).toBe("since 10:05 UTC");
   expect(sessionState(as({ status: "recovering", attention: "Speech is unreachable" }), null, [])).toEqual({ label: "Needs attention", detail: "Speech is unreachable" });
   expect(sessionState(as({ attention: "Check the stream" }), healthAt(500), [])).toEqual({ label: "Needs attention", detail: "Check the stream" });
   expect(sessionState(as({ status: "stopped" }), null, [])).toEqual({ label: "Ended", detail: null });
@@ -223,4 +224,17 @@ test("open gaps add what is not covered yet, and a noted gap says its note inste
   expect(sessionState(as({}), healthAt(0), [gap(100, 220), gap(300, 330)])).toEqual({ label: "Live", detail: "3 min not covered yet" });
   expect(sessionState(as({}), healthAt(200), [gap(0, 61)])).toEqual({ label: "Catching up", detail: "3 min behind · 2 min not covered yet" });
   expect(sessionState(as({ status: "stopped" }), null, [gap(0, 60), gap(100, 200, "The recording has no audio there")])).toEqual({ label: "Ended", detail: "1 min not covered yet · The recording has no audio there" });
+});
+
+test("a video that has not started yet says Starting, not Live", () => {
+  expect(sessionState(as({ status: "starting" }), null, [])).toEqual({ label: "Starting", detail: null });
+});
+
+test("every degraded or stopped video with a source can be resumed, gaps or not", () => {
+  const url = "https://www.youtube.com/watch?v=QB5BNdBFujE";
+  expect(canResume(as({ status: "stopped", source_url: url }))).toBe(true);
+  expect(canResume(as({ status: "degraded", source_url: url }))).toBe(true);
+  expect(canResume(as({ status: "stopped", source_url: null }))).toBe(false);
+  expect(canResume(as({ status: "live", source_url: url }))).toBe(false);
+  expect(canResume(as({ status: "recovering", source_url: url }))).toBe(false);
 });

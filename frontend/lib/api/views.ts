@@ -22,6 +22,8 @@ export const VideoCard = z.object({
   claim_count: z.number(),
   duration_s: z.number(),
   gaps: z.array(Gap).default([]),
+  // How far behind the stream a running video's last stored health said it was; an older api omits it.
+  behind_s: z.number().nullable().default(null),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

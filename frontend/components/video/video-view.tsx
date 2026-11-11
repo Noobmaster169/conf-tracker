@@ -28,7 +28,7 @@ export function VideoView({ snapshot, start }: { snapshot: Snapshot; start: numb
     <main className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-5 sm:px-6 lg:h-[calc(100dvh-3.3rem)]">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <h1 className="min-w-0 truncate text-xl font-bold tracking-tight">{title}</h1>
-        {label.label === "Live" ? <LiveBadge /> : <span className={`text-[13px] font-medium ${label.label === "Ended" ? "text-ink-soft" : "text-live"}`}>{label.label}</span>}
+        {label.label === "Live" ? <LiveBadge /> : <span className={`text-[13px] font-medium ${label.label === "Ended" || label.label === "Starting" ? "text-ink-soft" : "text-live"}`}>{label.label}</span>}
         {label.detail && <span className="text-[13px] text-ink-soft">{label.detail}</span>}
         {stage && session.title && <span className="text-ink-soft">{`${stage.conference}, ${stage.name}`}</span>}
         {session.error && <span className="text-[13px] font-medium text-live">Stopped with an error: {session.error}</span>}
