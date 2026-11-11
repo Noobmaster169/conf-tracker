@@ -90,7 +90,7 @@ test("a proposal parses, and the snapshot needs the session cost", () => {
   };
   const snapshot = { session, segments: [], health: null, speakers: [], claims: [], calls: [], seq: 0, stage: null, talks: [], spans: [], people: [] };
   expect(Snapshot.safeParse(snapshot).success).toBe(false);
-  expect(Snapshot.parse({ ...snapshot, cost_usd: 0.25 }).cost_usd).toBe(0.25);
+  expect(Snapshot.parse({ ...snapshot, cost_usd: 0.25, gaps: [] }).cost_usd).toBe(0.25);
 });
 
 test("session.started and health parse without the resume fields", () => {

@@ -161,6 +161,8 @@ export const Health = z.object({
   gpu_ms_asr: z.number(),
   gpu_ms_diar: z.number(),
   buffer_s: z.number(),
+  // Seconds behind the live edge while catching up; null when the stream is not live.
+  behind_s: z.number().nullable().optional(),
   received_at: z.string(),
 });
 export type Health = z.infer<typeof Health>;
@@ -408,6 +410,7 @@ export const Snapshot = z.object({
   talks: z.array(Talk),
   spans: z.array(Span),
   people: z.array(Person),
+  gaps: z.array(Gap),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 

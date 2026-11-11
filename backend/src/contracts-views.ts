@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Claim, ClaimKind, Person, Session, Stage, Talk, TalkSummary } from "./contracts";
+import { Claim, ClaimKind, Gap, Person, Session, Stage, Talk, TalkSummary } from "./contracts";
 
 /** What the app's pages read: claims with who and where resolved, and cards for videos, talks and people. Mirrored in the frontend's lib/api/conference.ts. */
 
@@ -34,6 +34,8 @@ export const VideoCard = z.object({
   now: z.object({ id: z.number(), title: z.string() }).nullable(),
   claim_count: z.number(),
   duration_s: z.number(),
+  // Stretches of the stream no leg covered and nothing has filled yet.
+  gaps: z.array(Gap),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

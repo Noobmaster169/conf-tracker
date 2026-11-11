@@ -12,6 +12,7 @@ import { createSummarizer } from "../src/ingest/summarizer";
 import { createTracker } from "../src/ingest/tracker";
 import { ExtractConfig } from "../src/contracts";
 import { createHub } from "../src/realtime/hub";
+import * as gaps from "../src/repositories/gaps";
 import * as segments from "../src/repositories/segments";
 import * as sessions from "../src/repositories/sessions";
 import * as spans from "../src/repositories/spans";
@@ -195,5 +196,22 @@ test("the admin area builds a stage, pastes a schedule, edits a talk, corrects w
     expect((await request(app).post(`/talks/${intro.id}/summary`).set(auth)).status).toBe(404);
     // Last, because the refused write aborts the transaction this test runs in: two people cannot share a name.
     expect((await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Lily Liu" })).status).toBe(400);
+  });
+});
+
+test("a video and its snapshot list the stretches not covered yet, and the snapshot's health keeps how far behind it is", async () => {
+  await inRollback(async (tx) => {
+    const { session } = await setUp(tx);
+    const open = await gaps.add(tx, session.id, 100, 220);
+    const done = await gaps.add(tx, session.id, 300, 360);
+    await gaps.filled(tx, done.id);
+    const hub = createHub(100);
+    hub.publish(session.id, { type: "health", data: { t: 5, lag_s: 1, gpu_ms_asr: 1, gpu_ms_diar: 0, buffer_s: 0, behind_s: 240, received_at: "now" } });
+    const app = createApp({ db: tx, hub, runner: noRunner });
+    const video = (await request(app).get("/videos").set(auth)).body.find((v: { session: { id: string } }) => v.session.id === session.id);
+    expect(video.gaps).toMatchObject([{ id: open.id, t0: 100, t1: 220, filled_at: null }]);
+    const snapshot = await request(app).get(`/sessions/${session.id}`).set(auth);
+    expect(snapshot.body.gaps).toMatchObject([{ id: open.id }]);
+    expect(snapshot.body.health.behind_s).toBe(240);
   });
 });

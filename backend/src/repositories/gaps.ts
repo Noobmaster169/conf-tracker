@@ -35,6 +35,14 @@ export async function open(db: Queryable, sessionId: string): Promise<Gap[]> {
   return rows.map(toGap);
 }
 
+/** The unfilled gaps of several videos at once, by session. */
+export async function openFor(db: Queryable, sessionIds: string[]): Promise<Map<string, Gap[]>> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from session_gaps where session_id = any($1::uuid[]) and filled_at is null order by t0, id`, [sessionIds]);
+  const by = new Map<string, Gap[]>();
+  for (const row of rows) by.set(row.session_id, [...(by.get(row.session_id) ?? []), toGap(row)]);
+  return by;
+}
+
 export async function get(db: Queryable, gapId: number): Promise<Gap | null> {
   const { rows } = await db.query<Row>(`select ${COLUMNS} from session_gaps where id = $1`, [gapId]);
   return rows[0] ? toGap(rows[0]) : null;

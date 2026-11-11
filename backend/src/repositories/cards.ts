@@ -2,6 +2,7 @@ import { PersonCard, TalkCard, VideoCard } from "../contracts-views";
 import type { Queryable } from "../db";
 import { videoIdFromUrl } from "../lib/youtube-id";
 import { SURVIVOR_CTE } from "./feed";
+import * as gaps from "./gaps";
 import * as people from "./people";
 import * as sessions from "./sessions";
 import * as talks from "./talks";
@@ -36,6 +37,7 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
      order by s.created_at desc limit 200`,
     [includeHidden],
   );
+  const open = await gaps.openFor(db, rows.map((row) => row.id));
   return rows.map((row) =>
     VideoCard.parse({
       session: sessions.toSession(row),
@@ -43,6 +45,7 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
       now: row.now_id === null ? null : { id: Number(row.now_id), title: row.now_title },
       claim_count: row.claim_count,
       duration_s: row.duration_s,
+      gaps: open.get(row.id) ?? [],
     }),
   );
 }

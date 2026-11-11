@@ -2,6 +2,7 @@ import type { Session, Snapshot } from "../contracts";
 import type { Queryable } from "../db";
 import type { Hub } from "../realtime/hub";
 import * as calls from "../repositories/calls";
+import * as gaps from "../repositories/gaps";
 import * as claims from "../repositories/claims";
 import * as people from "../repositories/people";
 import * as segments from "../repositories/segments";
@@ -30,6 +31,7 @@ export async function buildSnapshot(db: Queryable, hub: Hub, session: Session): 
     session: current,
     stage: current.stage_id ? await stages.get(db, current.stage_id) : null,
     talks: current.stage_id ? await talks.forStage(db, current.stage_id) : [],
+    gaps: await gaps.open(db, session.id),
     spans: await spans.list(db, session.id),
     people: await people.forSession(db, session.id),
     segments: await segments.latest(db, session.id, SNAPSHOT_SEGMENTS),
