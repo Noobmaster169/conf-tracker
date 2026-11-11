@@ -18,10 +18,14 @@ export interface SpeechLink {
 /** Opens one session on the speech service. Resolves once the start message is on the wire. */
 export type SpeechConnector = (start: StartMessage, handlers: SpeechHandlers) => Promise<SpeechLink>;
 
-export function wsSpeechConnector(url: string): SpeechConnector {
+/** How long speech may take to answer the websocket handshake before the connect counts as failed (and is retried). */
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+
+export function wsSpeechConnector(url: string, opts: { handshakeTimeoutMs?: number } = {}): SpeechConnector {
   return (start, handlers) =>
     new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
+      // A speech that accepts the connection but never answers would otherwise hold the leg's open forever.
+      const ws = new WebSocket(url, { handshakeTimeout: opts.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS });
       // Events are handled strictly in order: a segment must be stored before the health that follows it.
       let chain: Promise<void> = Promise.resolve();
       let opened = false;
