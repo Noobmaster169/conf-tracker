@@ -25,7 +25,7 @@ afterAll(closePool);
 
 const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
 const auth = { authorization: "Bearer test-key" };
-const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), live: () => [] };
+const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => [] };
 
 const say = (db: Queryable, sessionId: string, t0: number, text: string, speaker: string | null = "S1") =>
   segments.insert(db, sessionId, { t0, t1: t0 + 5, text, words: text.split(" ").map((w, i) => ({ w, t0: t0 + i * 0.1, t1: t0 + i * 0.1 + 0.1, p: 1, speaker_id: speaker })) });

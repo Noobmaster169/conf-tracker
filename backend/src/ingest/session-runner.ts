@@ -4,7 +4,9 @@ import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { Hub } from "../realtime/hub";
 import * as events from "../repositories/events";
-import { resumePoint } from "../repositories/resume";
+import * as gaps from "../repositories/gaps";
+import * as legs from "../repositories/legs";
+import { resumePoint, speakerFloor, truncateAfter } from "../repositories/resume";
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
 import type { Loop, LoopFactory } from "./loop";
@@ -13,163 +15,405 @@ import type { SpeechConnector, SpeechLink } from "./speech-client";
 
 const log = childLogger({ module: "session-runner" });
 
+/** Seconds before the next leg after the nth failure in a row; the last value repeats forever. */
+const BACKOFF_S = [5, 10, 20, 40, 60];
+/** How long a video may stay recovering before it also asks for a person. */
+const ATTENTION_AFTER_MS = 15 * 60 * 1000;
+const DEFAULT_MAX_SPEED = 3;
+
+export type Cancel = () => void;
+export type SetTimer = (fn: () => void, ms: number) => Cancel;
+
 export interface SessionRunner {
   start(sessionId: string): Promise<Session>;
   stop(sessionId: string): Promise<Session>;
+  /** Feeds a degraded or stopped video again, from its resume point. */
+  resume(sessionId: string): Promise<Session>;
+  /** Feeds every video a previous process left running (starting, live, recovering); returns their ids. */
+  resumeAll(): Promise<string[]>;
   live(): string[];
 }
 
+/** One connection to speech for a video. `dead` once it failed, ended or was stopped: nothing from it counts after. */
+interface LegState {
+  rowId: number | null;
+  rowEnded: boolean;
+  requested: number;
+  lastT: number;
+  link: SpeechLink | null;
+  tracker: SpeakerTracker;
+  dead: boolean;
+}
+
+/**
+ * A video this process feeds. It is in `videos` from its first leg until it ends or is stopped (`done`); meanwhile it
+ * has exactly one of: a leg open or opening (`leg`), a retry scheduled (`retry`), or its first setup in flight.
+ */
+interface Video {
+  id: string;
+  loops: Loop[] | null;
+  seq: number;
+  leg: LegState | null;
+  retry: Cancel | null;
+  attempt: number;
+  lastError: string | null;
+  recoveringSince: number | null;
+  attention: string | null;
+  done: boolean;
+  first: Promise<Session> | null;
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+
 /** Persist first, publish second: what the browser sees is always already stored. */
-export function createSessionRunner(deps: { db: Queryable; hub: Hub; connect: SpeechConnector; loops?: LoopFactory[] }): SessionRunner {
+export function createSessionRunner(deps: {
+  db: Queryable;
+  hub: Hub;
+  connect: SpeechConnector;
+  loops?: LoopFactory[];
+  now?: () => number;
+  setTimer?: SetTimer;
+}): SessionRunner {
   const { db, hub, connect } = deps;
   const factories = deps.loops ?? [];
-  const links = new Map<string, SpeechLink>();
-  const seqs = new Map<string, number>();
-  const pending = new Map<string, Promise<Session>>();
-  const trackers = new Map<string, SpeakerTracker>();
-  const loops = new Map<string, Loop[]>();
+  const now = deps.now ?? Date.now;
+  const setTimer: SetTimer =
+    deps.setTimer ??
+    ((fn, ms) => {
+      const handle = setTimeout(fn, ms);
+      return () => clearTimeout(handle);
+    });
+  const videos = new Map<string, Video>();
 
   const publishSession = (session: Session) => hub.publish(session.id, { type: "session", data: session });
 
+  /** Publishes a status write that may have landed after a stop; if so the stop wins and is written again. */
+  async function publishUnlessStopped(v: Video, session: Session): Promise<void> {
+    publishSession(v.done && session.status !== "stopped" ? await sessions.setStatus(db, v.id, "stopped") : session);
+  }
+
+  const forget = (v: Video) => {
+    v.done = true;
+    v.retry?.();
+    v.retry = null;
+    if (videos.get(v.id) === v) videos.delete(v.id);
+  };
+
   // `cancel` is a user's stop: the stream-time runs a fast replay has queued are dropped, not paid for.
-  const release = (sessionId: string, opts: { cancel?: boolean } = {}): boolean => {
-    seqs.delete(sessionId);
-    trackers.delete(sessionId);
-    const own = loops.get(sessionId) ?? [];
-    loops.delete(sessionId);
+  const releaseLoops = (v: Video, opts: { cancel?: boolean } = {}) => {
+    const own = v.loops ?? [];
+    v.loops = [];
     for (const loop of own) {
       // A stop keeps only the run in flight and the final drain from the cursor (extractor only); an end drains the
       // whole queue, so a finished replay's claims keep arriving. Detached either way: a stop must not wait on a model.
       if (opts.cancel) loop.cancelQueued();
       void loop
         .flush()
-        .catch((error: unknown) => log.error({ sessionId, err: error instanceof Error ? error.message : String(error) }, "final loop run failed"))
+        .catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "final loop run failed"))
         .finally(() => loop.stop());
     }
-    return links.delete(sessionId);
   };
 
-  async function handle(sessionId: string, event: SpeechEvent): Promise<void> {
-    // Frames still queued when stop() ran must not reopen or extend a stopped session.
-    if (!links.has(sessionId)) {
-      log.debug({ sessionId, type: event.type }, "dropping an event for a session that is no longer live");
-      return;
-    }
-    const seq = (seqs.get(sessionId) ?? 0) + 1;
-    seqs.set(sessionId, seq);
-    await events.append(db, sessionId, seq, event.type, event);
-    switch (event.type) {
-      case "session.started": {
-        publishSession(await sessions.markStarted(db, sessionId, { startedAt: event.started_at, models: event.models }));
-        return;
-      }
-      case "asr.segment": {
-        const words = trackers.get(sessionId)?.assign(event.words) ?? event.words.map((w) => ({ ...w, speaker_id: null }));
-        const stored = await segments.insert(db, sessionId, { t0: event.t0, t1: event.t1, text: event.text, words });
-        hub.publish(sessionId, { type: "segment", data: stored });
-        for (const loop of loops.get(sessionId) ?? []) loop.advance(stored.t1);
-        return;
-      }
-      case "health": {
-        const { type: _type, ...rest } = event;
-        hub.publish(sessionId, { type: "health", data: { ...rest, received_at: new Date().toISOString() } });
-        return;
-      }
-      case "diar.turns":
-        await trackers.get(sessionId)?.onTurns(event);
-        return;
-      case "speaker.new":
-        await trackers.get(sessionId)?.onNew(event);
-        return;
-      case "speaker.merged":
-        await trackers.get(sessionId)?.onMerged(event);
-        return;
-      case "session.ended": {
-        release(sessionId);
-        if (event.reason === "error") {
-          log.error({ sessionId, message: event.message }, "speech ended the session with an error");
-          publishSession(await sessions.setError(db, sessionId, event.message || "speech ended with an error"));
-          return;
-        }
-        publishSession(await sessions.setStatus(db, sessionId, "stopped"));
-        return;
-      }
-    }
+  /** Ends a leg's row once, whoever gets there first. */
+  async function endLegRow(leg: LegState, reason: string): Promise<void> {
+    if (leg.rowId === null || leg.rowEnded) return;
+    leg.rowEnded = true;
+    await legs.ended(db, leg.rowId, { endT: leg.lastT, reason });
   }
 
-  async function onClose(sessionId: string, reason: string): Promise<void> {
-    // A link we removed ourselves (stop, or session.ended) is a clean close; anything else is speech dying.
-    if (!release(sessionId)) return;
-    log.warn({ sessionId, reason }, "speech closed the socket while the session was live");
-    publishSession(await sessions.setStatus(db, sessionId, "degraded"));
-  }
+  const isCurrent = (v: Video, leg: LegState) => !v.done && v.leg === leg && !leg.dead;
 
-  async function connectSession(session: Session): Promise<Session> {
-    const sessionId = session.id;
+  function startMessage(session: Session, r: number, floor: number): StartMessage {
     const speed = session.config.speed;
+    const maxSpeed = session.config.catchup_max_speed;
     // A replay's url is kept for the page's embed; speech reads the stored recording instead.
     const replayOf = session.replay_of ?? undefined;
-    const start: StartMessage = {
-      session_id: sessionId,
+    return {
+      session_id: session.id,
       url: replayOf ? undefined : (session.source_url ?? undefined),
       file: replayOf ? undefined : (session.source_file ?? undefined),
       replay_of: replayOf,
       speed: typeof speed === "number" ? speed : undefined,
       config: session.config,
+      start_at: r,
+      speaker_floor: floor,
+      max_speed: typeof maxSpeed === "number" && maxSpeed > 0 ? maxSpeed : DEFAULT_MAX_SPEED,
     };
-    // The loops' first boundaries come after what is already stored, so a restarted video does not replay them all.
-    const resumeAt = await resumePoint(db, sessionId);
-    // Built before the socket opens: a bad config or a missing prompt version fails the start with nothing to clean up.
-    let own: Loop[];
+  }
+
+  /**
+   * Opens the video's next leg from its resume point. Does nothing if the video is done or already has a leg or a
+   * retry. Every await is followed by a check that the leg is still the video's: a stop in between wins.
+   * With `loud` (a fresh start), a failure to connect marks the video degraded and throws instead of retrying.
+   */
+  async function openLeg(v: Video, opts: { loud: boolean }): Promise<void> {
+    if (v.done || v.leg || v.retry) return;
+    const leg: LegState = {
+      rowId: null,
+      rowEnded: false,
+      requested: 0,
+      lastT: 0,
+      link: null,
+      tracker: createSpeakerTracker({ db, hub, sessionId: v.id }),
+      dead: false,
+    };
+    v.leg = leg;
+    const gone = () => !isCurrent(v, leg);
+
+    let session: Session;
+    let r: number;
     try {
-      own = factories.map((factory) => factory({ db, hub, sessionId, config: session.config, resumeAt })).filter((loop): loop is Loop => loop !== null);
+      const found = await sessions.get(db, v.id);
+      if (!found) throw new TerminalError(`session ${v.id} not found`);
+      session = found;
+      if (gone()) return;
+      r = await resumePoint(db, v.id);
+      if (gone()) return;
+      if (v.loops === null) {
+        // Built once per video, before its first socket: a bad config or a missing prompt version fails with nothing
+        // to clean up, and a reopened leg keeps the same loops (and their queues). Numbering continues from storage.
+        const resumeAt = r;
+        v.loops = factories
+          .map((factory) => factory({ db, hub, sessionId: v.id, config: found.config, resumeAt }))
+          .filter((loop): loop is Loop => loop !== null);
+        v.seq = await events.maxSeq(db, v.id);
+        if (gone()) return;
+      }
     } catch (error) {
-      publishSession(await sessions.setStatus(db, sessionId, "degraded"));
+      if (gone()) return;
+      // Not a leg failure: retrying cannot fix a missing row or a refused config.
+      leg.dead = true;
+      forget(v);
+      v.leg = null;
+      releaseLoops(v, { cancel: true });
+      publishSession(await sessions.setStatus(db, v.id, "degraded"));
       throw error;
     }
-    // Numbering continues from storage so a restarted backend never reuses a stored seq.
-    seqs.set(sessionId, await events.maxSeq(db, sessionId));
-    trackers.set(sessionId, createSpeakerTracker({ db, hub, sessionId }));
+
     try {
-      const link = await connect(start, {
-        onEvent: (event) => handle(sessionId, event),
-        onClose: (reason) => onClose(sessionId, reason),
+      await truncateAfter(db, v.id, r);
+      if (gone()) return;
+      const floor = await speakerFloor(db, v.id);
+      if (gone()) return;
+      const row = await legs.open(db, v.id, { speechId: v.id, kind: "main", requestedT: r });
+      leg.rowId = row.id;
+      leg.requested = r;
+      leg.lastT = r;
+      if (gone()) {
+        await endLegRow(leg, "stopped");
+        return;
+      }
+      const link = await connect(startMessage(session, r, floor), {
+        onEvent: (event) => handle(v, leg, event),
+        onClose: (reason) => onLegClose(v, leg, reason),
       });
-      links.set(sessionId, link);
-      if (own.length > 0) loops.set(sessionId, own);
+      if (gone()) {
+        // Stopped (or failed) while the socket was opening: nobody else will close it.
+        link.close();
+        return;
+      }
+      leg.link = link;
     } catch (error) {
-      seqs.delete(sessionId);
-      trackers.delete(sessionId);
-      publishSession(await sessions.setStatus(db, sessionId, "degraded"));
-      throw error;
+      if (gone()) return;
+      if (opts.loud) {
+        leg.dead = true;
+        forget(v);
+        v.leg = null;
+        releaseLoops(v, { cancel: true });
+        await endLegRow(leg, "error");
+        publishSession(await sessions.setStatus(db, v.id, "degraded"));
+        throw error;
+      }
+      await legFailed(v, leg, errorText(error));
     }
-    return session;
+  }
+
+  /** The current leg died: record it, mark the video recovering, and schedule the next leg after the backoff. */
+  async function legFailed(v: Video, leg: LegState, message: string): Promise<void> {
+    if (!isCurrent(v, leg)) return;
+    // Dead but still the video's leg until the retry is scheduled, so nothing else opens one in between.
+    leg.dead = true;
+    v.lastError = message;
+    leg.link?.close();
+    log.warn({ sessionId: v.id, err: message, attempt: v.attempt }, "a speech leg failed; reopening after a backoff");
+    await endLegRow(leg, "error");
+    if (v.done) return;
+    v.recoveringSince ??= now();
+    let session = await sessions.setRecovering(db, v.id);
+    if (!v.done && now() - v.recoveringSince >= ATTENTION_AFTER_MS) {
+      const text = `recovering since ${hhmm(v.recoveringSince)} UTC: ${message}`;
+      if (text !== v.attention) {
+        session = await sessions.setAttention(db, v.id, text);
+        v.attention = text;
+      }
+    }
+    await publishUnlessStopped(v, session);
+    if (v.done) return;
+    const delayS = BACKOFF_S[Math.min(v.attempt, BACKOFF_S.length - 1)]!;
+    v.attempt += 1;
+    v.leg = null;
+    v.retry = setTimer(() => {
+      v.retry = null;
+      openLeg(v, { loud: false }).catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "reopening a leg failed"));
+    }, delayS * 1000);
+  }
+
+  /** Speech ended the leg because the source ended or speech stopped it: the video ends normally. */
+  async function finish(v: Video, leg: LegState, reason: string): Promise<void> {
+    leg.dead = true;
+    forget(v);
+    v.leg = null;
+    releaseLoops(v);
+    await endLegRow(leg, reason);
+    publishSession(await sessions.setStatus(db, v.id, "stopped"));
+  }
+
+  async function handle(v: Video, leg: LegState, event: SpeechEvent): Promise<void> {
+    // Frames still queued from a leg that failed, or from before a stop, must not extend or reopen the video.
+    if (!isCurrent(v, leg)) {
+      log.debug({ sessionId: v.id, type: event.type }, "dropping an event from a leg that is no longer current");
+      return;
+    }
+    v.seq += 1;
+    await events.append(db, v.id, v.seq, event.type, event);
+    switch (event.type) {
+      case "session.started": {
+        if (leg.rowId !== null) await legs.started(db, leg.rowId, event.start_at);
+        // Speech started later than asked (a live edge without rewind): what lies between is not covered.
+        if (event.start_at > leg.requested + 1) await gaps.add(db, v.id, leg.requested, event.start_at);
+        leg.lastT = Math.max(leg.lastT, event.start_at);
+        v.attempt = 0;
+        v.recoveringSince = null;
+        v.attention = null;
+        await publishUnlessStopped(v, await sessions.markStarted(db, v.id, { startedAt: event.started_at, models: event.models }));
+        return;
+      }
+      case "asr.segment": {
+        const words = leg.tracker.assign(event.words);
+        const stored = await segments.insert(db, v.id, { t0: event.t0, t1: event.t1, text: event.text, words });
+        leg.lastT = Math.max(leg.lastT, stored.t1);
+        hub.publish(v.id, { type: "segment", data: stored });
+        for (const loop of v.loops ?? []) loop.advance(stored.t1);
+        return;
+      }
+      case "health": {
+        const { type: _type, ...rest } = event;
+        hub.publish(v.id, { type: "health", data: { ...rest, received_at: new Date().toISOString() } });
+        return;
+      }
+      case "diar.turns":
+        await leg.tracker.onTurns(event);
+        return;
+      case "speaker.new":
+        await leg.tracker.onNew(event);
+        return;
+      case "speaker.merged":
+        await leg.tracker.onMerged(event);
+        return;
+      case "session.ended": {
+        if (event.reason === "error") {
+          // Includes speech refusing a start whose id it still holds: one more failed attempt.
+          await legFailed(v, leg, event.message || "speech ended with an error");
+          return;
+        }
+        await finish(v, leg, event.reason);
+        return;
+      }
+    }
+  }
+
+  async function onLegClose(v: Video, leg: LegState, reason: string): Promise<void> {
+    // A leg we ended ourselves (stop, end, failure already handled) is a clean close; anything else is speech dying.
+    if (!isCurrent(v, leg)) return;
+    await legFailed(v, leg, `speech closed the socket: ${reason}`);
+  }
+
+  function newVideo(id: string): Video {
+    const v: Video = {
+      id,
+      loops: null,
+      seq: 0,
+      leg: null,
+      retry: null,
+      attempt: 0,
+      lastError: null,
+      recoveringSince: null,
+      attention: null,
+      done: false,
+      first: null,
+    };
+    videos.set(id, v);
+    return v;
+  }
+
+  /** Feeds a video this process does not hold yet as a recovery: recovering first, then a leg; failures retry. */
+  function revive(session: Session, since: number): Promise<Session> {
+    const v = newVideo(session.id);
+    v.recoveringSince = since;
+    v.first = (async () => {
+      const recovering = await sessions.setRecovering(db, v.id);
+      await publishUnlessStopped(v, recovering);
+      await openLeg(v, { loud: false });
+      return recovering;
+    })();
+    return v.first;
   }
 
   return {
     async start(sessionId) {
       const session = await sessions.get(db, sessionId);
       if (!session) throw new TerminalError(`session ${sessionId} not found`);
-      if (links.has(sessionId)) return session;
       // A second start while the first is still connecting must not open a second socket.
-      const inFlight = pending.get(sessionId);
-      if (inFlight) return inFlight;
-      const connecting = connectSession(session);
-      pending.set(sessionId, connecting);
-      try {
-        return await connecting;
-      } finally {
-        pending.delete(sessionId);
-      }
+      const existing = videos.get(sessionId);
+      if (existing) return existing.first ?? session;
+      const v = newVideo(sessionId);
+      v.first = openLeg(v, { loud: true }).then(() => session);
+      return v.first;
     },
     async stop(sessionId) {
-      const link = links.get(sessionId);
-      release(sessionId, { cancel: true });
+      const v = videos.get(sessionId);
+      let leg: LegState | null = null;
+      if (v) {
+        forget(v);
+        leg = v.leg;
+        v.leg = null;
+        if (leg) leg.dead = true;
+        releaseLoops(v, { cancel: true });
+      }
       const session = await sessions.setStatus(db, sessionId, "stopped");
       publishSession(session);
-      link?.close();
+      leg?.link?.close();
+      if (leg) await endLegRow(leg, "stopped");
       return session;
     },
-    live: () => [...links.keys()],
+    async resume(sessionId) {
+      const session = await sessions.get(db, sessionId);
+      if (!session) throw new TerminalError(`session ${sessionId} not found`);
+      const existing = videos.get(sessionId);
+      if (existing) return existing.first ?? session;
+      if (session.status !== "degraded" && session.status !== "stopped") {
+        throw new TerminalError(`session ${sessionId} is ${session.status}; only a degraded or stopped video can be resumed`);
+      }
+      return revive(session, now());
+    },
+    async resumeAll() {
+      const ids: string[] = [];
+      for (const session of await sessions.running(db)) {
+        if (!videos.has(session.id)) {
+          // Left by a previous process; recovering keeps counting from when it first broke.
+          const since = session.recovering_since ? Date.parse(session.recovering_since) : now();
+          try {
+            await revive(session, since);
+          } catch (error) {
+            log.error({ sessionId: session.id, err: errorText(error) }, "resuming a video left running failed");
+            continue;
+          }
+        }
+        ids.push(session.id);
+      }
+      return ids;
+    },
+    live: () => [...videos.keys()],
   };
 }

@@ -61,3 +61,76 @@ export function fakeSpeech(scripted: SpeechEvent[], options: { closeAfter?: bool
     drop: (reason) => close(reason),
   };
 }
+
+/** One connection of a scripted speech: its events, or a refusal (the connector throws), or a hold until `gate` resolves. */
+export interface ConnectionScript {
+  events?: SpeechEvent[];
+  /** Close the link after the events, as speech does after `session.ended` (default false: the leg stays open). */
+  closeAfter?: boolean;
+  /** The connector rejects with this message instead of connecting. */
+  refuse?: string;
+  /** The connector resolves only once this does (an open still in flight). */
+  gate?: Promise<void>;
+}
+
+export interface ScriptedConnection {
+  start: StartMessage;
+  /** Resolves once the scripted events were handled (and the close, when `closeAfter`); at once for a refusal. */
+  done: Promise<void>;
+  /** Resolves once the link was closed from either side. */
+  closed: Promise<void>;
+  isClosed(): boolean;
+  emit(event: SpeechEvent): Promise<void>;
+  drop(reason: string): Promise<void>;
+}
+
+export interface ScriptedSpeech {
+  connector: SpeechConnector;
+  starts: StartMessage[];
+  /** Every attempt, refused ones included, in order. */
+  connections: ScriptedConnection[];
+}
+
+/** A speech service that answers successive connections from a script, one entry each; one past the script fails the test. */
+export function scriptedSpeech(scripts: ConnectionScript[]): ScriptedSpeech {
+  const starts: StartMessage[] = [];
+  const connections: ScriptedConnection[] = [];
+
+  const connector: SpeechConnector = async (start, h) => {
+    const script = scripts[connections.length];
+    starts.push(start);
+    let resolveDone!: () => void;
+    let rejectDone!: (error: unknown) => void;
+    let resolveClosed!: () => void;
+    const done = new Promise<void>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    const closed = new Promise<void>((r) => (resolveClosed = r));
+    let isClosed = false;
+    const close = async (reason: string) => {
+      if (isClosed) return;
+      isClosed = true;
+      await h.onClose(reason);
+      resolveClosed();
+    };
+    connections.push({ start, done, closed, isClosed: () => isClosed, emit: (event) => h.onEvent(event), drop: (reason) => close(reason) });
+    if (!script) throw new Error(`speech was not scripted for connection ${connections.length}`);
+    if (script.refuse !== undefined) {
+      isClosed = true;
+      resolveDone();
+      resolveClosed();
+      throw new Error(script.refuse);
+    }
+    if (script.gate) await script.gate;
+    setImmediate(() => {
+      void (async () => {
+        for (const event of script.events ?? []) await h.onEvent(event);
+        if (script.closeAfter) await close("ended");
+      })().then(resolveDone, rejectDone);
+    });
+    return { close: () => void close("close 1000") };
+  };
+
+  return { connector, starts, connections };
+}
