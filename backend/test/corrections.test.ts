@@ -22,7 +22,7 @@ afterAll(closePool);
 
 const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
 const auth = { authorization: "Bearer test-key" };
-const runnerWith = (live: string[] = []): SessionRunner => ({ start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => live, busy: () => live });
+const runnerWith = (live: string[] = []): SessionRunner => ({ start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => live, busy: () => live, hold: () => {} });
 
 /** A video on a stage with one scheduled session, two voices and a claim from each. */
 async function setUp(db: Queryable) {

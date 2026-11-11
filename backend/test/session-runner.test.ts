@@ -1099,3 +1099,24 @@ test("busy keeps a stopped video's id until its final loop run has settled", asy
     expect(runner.busy()).toEqual([]);
   });
 });
+
+test("a resume while a sweep holds the video opens its leg only after the held work settles", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const speech = fakeSpeech([started], { closeAfter: false });
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setStatus(tx, created.id, "stopped");
+    let finish!: () => void;
+    runner.hold(created.id, new Promise<void>((resolve) => (finish = resolve)));
+    expect(runner.busy()).toEqual([created.id]);
+    const resuming = runner.resume(created.id);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(speech.starts).toHaveLength(0);
+    finish();
+    await resuming;
+    await speech.done;
+    expect(runner.live()).toEqual([created.id]);
+    expect(runner.busy()).toEqual([created.id]);
+  });
+});

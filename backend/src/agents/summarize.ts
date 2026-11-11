@@ -84,7 +84,7 @@ export async function runSummary(deps: StructuredDeps, input: SummarizeInput): P
   const system = prompt.text.replace("{{word_min}}", String(range.min)).replace("{{word_max}}", String(range.max));
   const user = renderSummaryInput(input);
   const base = {
-    step: prompt.step, promptVersion: prompt.version, windowT0: input.lines[0]?.t0 ?? 0, windowT1: input.lines.at(-1)?.t1 ?? 0, attempt: 1, input: user,
+    step: prompt.step, promptVersion: prompt.version, windowT0: input.lines[0]?.t0 ?? 0, windowT1: input.lines.at(-1)?.t1 ?? 0, attempt: 1, input: user, talkId: input.talk.id,
   };
   const started = Date.now();
   try {

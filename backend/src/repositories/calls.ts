@@ -34,6 +34,8 @@ const toSummaryRow = (row: SummaryRow): CallSummary => CallSummary.parse({ ...ro
 const toCall = (row: Row): LlmCall => LlmCall.parse({ ...row, id: Number(row.id), created_at: row.created_at.toISOString() });
 
 export interface NewCall {
+  /** The talk a summarize call was written for; absent on every other step. */
+  talkId?: number | null;
   step: string;
   promptVersion: string;
   model: string;
@@ -54,14 +56,14 @@ export async function insert(db: Queryable, sessionId: string, input: NewCall): 
   const { rows } = await db.query<Row>(
     `with c as (
        insert into llm_calls (session_id, step, prompt_version, model, window_t0, window_t1, attempt, input, output, parsed,
-                              input_tokens, output_tokens, cost_usd, latency_ms, error)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                              input_tokens, output_tokens, cost_usd, latency_ms, error, talk_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        returning *
      ) select ${FULL} from c`,
     [
       sessionId, input.step, input.promptVersion, input.model, input.windowT0, input.windowT1, input.attempt, input.input, input.output,
       input.parsed === null || input.parsed === undefined ? null : JSON.stringify(input.parsed),
-      input.inputTokens, input.outputTokens, input.costUsd, input.latencyMs, input.error,
+      input.inputTokens, input.outputTokens, input.costUsd, input.latencyMs, input.error, input.talkId ?? null,
     ],
   );
   return toCall(rows[0]!);

@@ -35,6 +35,8 @@ export interface SessionRunner {
   live(): string[];
   /** Ids a sweep must leave alone: live ones, and ones whose final loop runs have not settled. */
   busy(): string[];
+  /** Registers background work on a video (a sweep's drain): it counts as busy, and a start or resume waits for it before opening a leg. */
+  hold(sessionId: string, work: Promise<unknown>): void;
 }
 
 /** One connection to speech for a video. `dead` once it failed, ended or was stopped: nothing from it counts after. */
@@ -89,6 +91,11 @@ export function createSessionRunner(deps: {
   const videos = new Map<string, Video>();
   /** Final loop runs still going after a video was released, per id. */
   const flushing = new Map<string, Set<Promise<unknown>>>();
+  /** Background work registered through hold(), per id. */
+  const holds = new Map<string, Set<Promise<unknown>>>();
+  const holdsSettled = async (id: string) => {
+    while (holds.get(id)?.size) await Promise.allSettled([...holds.get(id)!]);
+  };
   // Event numbering outlives a Video: after a stop and an instant resume, the old leg's append may still be in flight
   // with a number the database does not show yet, so the new Video continues after it instead of reusing it.
   const seqs = new Map<string, number>();
@@ -434,6 +441,7 @@ export function createSessionRunner(deps: {
         // held without a leg or a retry.
         log.error({ sessionId: v.id, err: errorText(error) }, "marking a revived video recovering failed; opening its leg anyway");
       }
+      await holdsSettled(v.id);
       await openLeg(v, { loud: false });
       return shown;
     })();
@@ -448,7 +456,7 @@ export function createSessionRunner(deps: {
       const existing = videos.get(sessionId);
       if (existing) return existing.first ?? session;
       const v = newVideo(sessionId);
-      v.first = openLeg(v, { loud: true }).then(() => session);
+      v.first = holdsSettled(sessionId).then(() => openLeg(v, { loud: true })).then(() => session);
       return v.first;
     },
     async stop(sessionId) {
@@ -501,6 +509,17 @@ export function createSessionRunner(deps: {
       return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
     },
     live: () => [...videos.keys()],
-    busy: () => [...new Set([...videos.keys(), ...flushing.keys()])],
+    busy: () => [...new Set([...videos.keys(), ...flushing.keys(), ...holds.keys()])],
+    hold(sessionId, work) {
+      const set = holds.get(sessionId) ?? new Set<Promise<unknown>>();
+      holds.set(sessionId, set);
+      const tracked: Promise<unknown> = work
+        .catch(() => undefined)
+        .finally(() => {
+          set.delete(tracked);
+          if (set.size === 0 && holds.get(sessionId) === set) holds.delete(sessionId);
+        });
+      set.add(tracked);
+    },
   };
 }

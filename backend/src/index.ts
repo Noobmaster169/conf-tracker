@@ -33,7 +33,7 @@ const app = createApp({ db, hub, runner, summarize, fetchTitle: fetchVideoTitle 
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT, speech: config.SPEECH_URL, proxy: config.LLM_PROXY_URL }, "api listening"));
 // Videos a previous process left running are fed again from the second they stopped. Not awaited: listening comes first.
-runner
+const resumed = runner
   .resumeAll()
   .then((ids) => log.info({ count: ids.length }, "resumed videos a restart left running"))
   .catch((error) => log.error({ err: error instanceof Error ? error.message : String(error) }, "resuming videos a restart left running failed"));
@@ -41,8 +41,11 @@ runner
 // What a stopped video still owes (windows a downed model left, summaries that failed) is finished in the background.
 const sweeper = createSweeper({ db, hub, llm, summarize, runner });
 const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length) && log.info(r, "sweep finished work"));
-sweep();
-setInterval(sweep, 5 * 60 * 1000).unref();
+// Only after resumeAll has settled: until then the runner does not yet know which videos it is reviving.
+void resumed.then(() => {
+  sweep();
+  setInterval(sweep, 5 * 60 * 1000).unref();
+});
 
 async function shutdown(): Promise<void> {
   try {

@@ -15,7 +15,7 @@ afterAll(closePool);
 afterEach(() => setOverrides([]));
 
 const auth = { authorization: "Bearer test-key" };
-const runnerWith = (live: string[] = []): SessionRunner => ({ start: (id) => sessions.get(getPool(), id).then((s) => s!), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => live, busy: () => live });
+const runnerWith = (live: string[] = []): SessionRunner => ({ start: (id) => sessions.get(getPool(), id).then((s) => s!), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => live, busy: () => live, hold: () => {} });
 const probe = async (url: string) => ({ ok: !url.includes("8100"), detail: url });
 
 test("status shows the api, the proxy, speech, the model calls and what the box last reported", async () => {

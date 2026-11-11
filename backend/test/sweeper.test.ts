@@ -21,7 +21,7 @@ const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
 const NO_CLAIMS = JSON.stringify({ claims: [] });
 const runnerOf = (busy: string[] = []): SessionRunner => ({
   start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")),
-  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => busy,
+  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => busy, hold: () => {},
 });
 const say = (db: Parameters<typeof segments.insert>[0], sessionId: string, t0: number) =>
   segments.insert(db, sessionId, { t0, t1: t0 + 5, text: `w${t0}`, words: [{ w: `w${t0}`, t0, t1: t0 + 1, p: 1, speaker_id: "S1" }] });
@@ -51,9 +51,20 @@ test("with the model failing nothing moves and the next sweep (model back) finis
     await createSweeper({ db: tx, hub: createHub(10), llm: down.client, summarize: noSummary, runner: runnerOf() }).sweep();
     expect(await answered(tx, s.id)).toBe(0);
     const up = fakeLlm(NO_CLAIMS);
-    const report = await createSweeper({ db: tx, hub: createHub(10), llm: up.client, summarize: noSummary, runner: runnerOf() }).sweep();
+    // Inside the back-off the failed video is left alone.
+    expect((await createSweeper({ db: tx, hub: createHub(10), llm: up.client, summarize: noSummary, runner: runnerOf() }).sweep()).extracted).not.toContain(s.id);
+    expect(up.requests.filter((r) => r.user.includes("w0"))).toHaveLength(0);
+    const later = () => Date.now() + 16 * 60 * 1000;
+    const report = await createSweeper({ db: tx, hub: createHub(10), llm: up.client, summarize: noSummary, runner: runnerOf(), now: later }).sweep();
     expect(report.extracted).toContain(s.id);
     expect(await answered(tx, s.id)).toBeGreaterThanOrEqual(391);
+    // No window skipped: the lines the model was shown as new, in order, cover every line once.
+    const seen = up.requests.filter((r) => r.user.includes("## new lines")).flatMap((r) => {
+      const fresh = r.user.split("## new lines (extract from these)\n")[1] ?? "";
+      return [...fresh.matchAll(/ w(\d+)/g)].map((m) => Number(m[1]));
+    });
+    const mine = seen.filter((n) => n % 10 === 0 && n < 400);
+    expect(mine.slice(0, 40)).toEqual(Array.from({ length: 40 }, (_, i) => i * 10));
   });
 });
 
@@ -125,5 +136,43 @@ test("a sweep that fails reports nothing instead of throwing, and a sweep never 
     expect(queries).toBe(1);
     release();
     await first;
+  });
+});
+
+test("a finished video drops out: nothing is asked and nothing is reported once its cursor reaches its last line", async () => {
+  await inRollback(async (tx) => {
+    const s = await backlog(tx);
+    const first = fakeLlm(NO_CLAIMS);
+    await createSweeper({ db: tx, hub: createHub(10), llm: first.client, summarize: noSummary, runner: runnerOf() }).sweep();
+    const again = fakeLlm(NO_CLAIMS);
+    const report = await createSweeper({ db: tx, hub: createHub(10), llm: again.client, summarize: noSummary, runner: runnerOf() }).sweep();
+    expect(report.extracted).not.toContain(s.id);
+    expect(again.requests.filter((r) => r.user.includes("w390"))).toHaveLength(0);
+  });
+});
+
+test("a summary that failed is asked again at most once an hour, and never after five failures", async () => {
+  await inRollback(async (tx) => {
+    const stage = await stages.create(tx, { conference: "Summit", name: "Main", day: "2026-10-06", description: "" });
+    const talk = await talks.create(tx, stage.id, { title: "A", description: "", kind: "talk", starts_at: null, ends_at: null, speakers: [] });
+    const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: { extract: false } });
+    await spans.switchTo(tx, s.id, { talkId: talk.id, state: "talk", t: 0, confidence: 0.9, quote: null, source: "tracker", callId: null });
+    await spans.close(tx, s.id, 100);
+    const failed = () => calls.insert(tx, s.id, {
+      step: "summarize", promptVersion: "v1", model: "m", windowT0: 0, windowT1: 1, attempt: 1, input: "x", output: null, parsed: null,
+      inputTokens: null, outputTokens: null, costUsd: null, latencyMs: 1, error: "proxy down", talkId: talk.id,
+    });
+    await failed();
+    let asked = 0;
+    const summarize = async (sid: string) => { if (sid === s.id) asked += 1; return null; };
+    const at = (min: number) => () => Date.now() + min * 60 * 1000;
+    const sweep = (min: number) => createSweeper({ db: tx, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize, runner: runnerOf(), now: at(min) }).sweep();
+    await sweep(5);
+    expect(asked).toBe(0);
+    await sweep(61);
+    expect(asked).toBe(1);
+    for (let i = 0; i < 4; i++) await failed();
+    await sweep(500);
+    expect(asked).toBe(1);
   });
 });
