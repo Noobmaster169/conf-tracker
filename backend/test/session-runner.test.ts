@@ -1076,3 +1076,26 @@ test("a replaced leg's session.started, held across a stop and an instant resume
     await runner.stop(created.id);
   });
 });
+
+test("busy keeps a stopped video's id until its final loop run has settled", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const speech = fakeSpeech([started], { closeAfter: false });
+    let finish!: () => void;
+    const slow: ExtractorFactory = () => ({
+      tick: async () => {}, advance: () => {}, cancelQueued: () => {}, stop: () => {}, drain: async () => true,
+      flush: () => new Promise<void>((resolve) => (finish = resolve)),
+    } as Extractor);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, loops: [slow] });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.done;
+    expect(runner.busy()).toEqual([created.id]);
+    await runner.stop(created.id);
+    expect(runner.live()).toEqual([]);
+    expect(runner.busy()).toEqual([created.id]);
+    finish();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(runner.busy()).toEqual([]);
+  });
+});

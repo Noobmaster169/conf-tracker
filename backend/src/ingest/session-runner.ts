@@ -33,6 +33,8 @@ export interface SessionRunner {
   /** Feeds every video a previous process left running (starting, live, recovering); returns their ids. */
   resumeAll(): Promise<string[]>;
   live(): string[];
+  /** Ids a sweep must leave alone: live ones, and ones whose final loop runs have not settled. */
+  busy(): string[];
 }
 
 /** One connection to speech for a video. `dead` once it failed, ended or was stopped: nothing from it counts after. */
@@ -85,6 +87,8 @@ export function createSessionRunner(deps: {
       return () => clearTimeout(handle);
     });
   const videos = new Map<string, Video>();
+  /** Final loop runs still going after a video was released, per id. */
+  const flushing = new Map<string, Set<Promise<unknown>>>();
   // Event numbering outlives a Video: after a stop and an instant resume, the old leg's append may still be in flight
   // with a number the database does not show yet, so the new Video continues after it instead of reusing it.
   const seqs = new Map<string, number>();
@@ -133,10 +137,17 @@ export function createSessionRunner(deps: {
       // A stop keeps only the run in flight and the final drain from the cursor (extractor only); an end drains the
       // whole queue, so a finished replay's claims keep arriving. Detached either way: a stop must not wait on a model.
       if (opts.cancel) loop.cancelQueued();
-      void loop
+      const pending = loop
         .flush()
         .catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "final loop run failed"))
-        .finally(() => loop.stop());
+        .finally(() => {
+          loop.stop();
+          const set = flushing.get(v.id);
+          set?.delete(pending);
+          if (set?.size === 0) flushing.delete(v.id);
+        });
+      if (!flushing.has(v.id)) flushing.set(v.id, new Set());
+      flushing.get(v.id)!.add(pending);
     }
   };
 
@@ -490,5 +501,6 @@ export function createSessionRunner(deps: {
       return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
     },
     live: () => [...videos.keys()],
+    busy: () => [...new Set([...videos.keys(), ...flushing.keys()])],
   };
 }

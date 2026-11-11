@@ -20,7 +20,7 @@ import { inRollback } from "./db";
 afterAll(closePool);
 
 const auth = { authorization: "Bearer test-key" };
-const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => [] };
+const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => [], busy: () => [] };
 // The test database holds other tests' rows, so every list is read down to this test's own.
 const OURS = ["Known Before", "No Session", "On Both", "Test Only"];
 const names = (body: { person: { name: string } }[]) => body.map((p) => p.person.name).filter((n) => OURS.includes(n)).sort();

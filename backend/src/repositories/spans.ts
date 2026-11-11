@@ -91,3 +91,18 @@ export async function forTalk(db: Queryable, sessionId: string, talkId: number):
   );
   return rows.map(toSpan);
 }
+
+/** Closed talk spans whose talk has no summary for that video yet, in videos created within `days`. One pair per talk and video. */
+export async function unsummarised(db: Queryable, days = 7): Promise<{ sessionId: string; talkId: number }[]> {
+  const { rows } = await db.query<{ session_id: string; talk_id: string }>(
+    `select distinct sp.session_id, sp.talk_id
+       from talk_spans sp
+       join sessions s on s.id = sp.session_id
+      where sp.state = 'talk' and sp.talk_id is not null and sp.t1 is not null
+        and s.created_at > now() - make_interval(days => $1::int)
+        and not exists (select 1 from talk_summaries ts where ts.talk_id = sp.talk_id and ts.session_id = sp.session_id)
+      order by sp.session_id, sp.talk_id`,
+    [days],
+  );
+  return rows.map((r) => ({ sessionId: r.session_id, talkId: Number(r.talk_id) }));
+}

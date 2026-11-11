@@ -5,6 +5,7 @@ import { closePool, getPool } from "./db";
 import { extractorFactory } from "./ingest/extractor";
 import { namerFactory } from "./ingest/namer";
 import { createSessionRunner } from "./ingest/session-runner";
+import { createSweeper } from "./ingest/sweeper";
 import { createSummarizer } from "./ingest/summarizer";
 import { trackerFactory } from "./ingest/tracker";
 import { wsSpeechConnector } from "./ingest/speech-client";
@@ -36,6 +37,12 @@ runner
   .resumeAll()
   .then((ids) => log.info({ count: ids.length }, "resumed videos a restart left running"))
   .catch((error) => log.error({ err: error instanceof Error ? error.message : String(error) }, "resuming videos a restart left running failed"));
+
+// What a stopped video still owes (windows a downed model left, summaries that failed) is finished in the background.
+const sweeper = createSweeper({ db, hub, llm, summarize, runner });
+const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length) && log.info(r, "sweep finished work"));
+sweep();
+setInterval(sweep, 5 * 60 * 1000).unref();
 
 async function shutdown(): Promise<void> {
   try {
