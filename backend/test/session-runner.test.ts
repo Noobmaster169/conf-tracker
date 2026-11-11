@@ -1009,3 +1009,44 @@ test("a revive whose first write fails still opens a leg", async () => {
     await runner.stop(created.id);
   });
 });
+
+// --- Fix round 3 ---------------------------------------------------------------------------------------------------
+
+test("a replaced leg's session.started, held across a stop and an instant resume, does not mark the resumed video live", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let hold: Promise<void> | null = null;
+    let release!: () => void;
+    let reached = false;
+    const db = hookedDb(tx, async (text) => {
+      if (hold && text.startsWith("update session_legs set start_t")) {
+        const wait = hold;
+        hold = null;
+        reached = true;
+        await wait;
+      }
+    });
+    // The resumed leg connects but has not started yet: the video must stay recovering.
+    const speech = scriptedSpeech([{ events: [] }, { events: [] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+
+    hold = new Promise<void>((resolve) => (release = resolve));
+    const old = speech.connections[0]!.emit(startedAt(5));
+    await until(() => reached, "the old leg's started write");
+    await runner.stop(created.id);
+    await runner.resume(created.id);
+    await speech.connections[1]!.done;
+    release();
+    await old;
+    await settle();
+
+    expect((await sessions.get(tx, created.id))?.status).toBe("recovering");
+    expect(await gaps.open(tx, created.id)).toEqual([]);
+    expect(runner.live()).toEqual([created.id]);
+    await runner.stop(created.id);
+  });
+});

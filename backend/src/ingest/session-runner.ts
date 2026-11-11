@@ -205,8 +205,9 @@ export function createSessionRunner(deps: {
         // Numbering continues from storage. Read on every open until it succeeds once: a failed read must not leave
         // the video numbering from 1 into the stored events' keys.
         const stored = await events.maxSeq(db, v.id);
-        seqs.set(v.id, Math.max(stored, seqs.get(v.id) ?? 0));
+        // A Video replaced during the read must not reset a newer Video's numbering to the stored max.
         if (gone()) return;
+        if (!seqs.has(v.id)) seqs.set(v.id, stored);
       }
       if (v.loops === null) {
         // Built once per video, before its first socket: a bad config or a missing prompt version fails with nothing
@@ -337,9 +338,12 @@ export function createSessionRunner(deps: {
     if (!isCurrent(v, leg)) return;
     switch (event.type) {
       case "session.started": {
+        // Each write re-checks the leg: a stop and an instant resume may land between them, and a replaced leg writes nothing.
         if (leg.rowId !== null) await legs.started(db, leg.rowId, event.start_at);
+        if (!isCurrent(v, leg)) return;
         // Speech started later than asked (a live edge without rewind): what lies between is not covered.
         if (event.start_at > leg.requested + 1) await gaps.add(db, v.id, leg.requested, event.start_at);
+        if (!isCurrent(v, leg)) return;
         leg.lastT = Math.max(leg.lastT, event.start_at);
         v.attempt = 0;
         v.recoveringSince = null;
