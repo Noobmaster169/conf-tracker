@@ -98,3 +98,44 @@ test("cancelQueued drops the queued runs, lets the one in flight finish, and flu
   await flushed;
   expect(seen).toEqual([30, Number.POSITIVE_INFINITY]);
 });
+
+test("with latestOnly, boundaries passed while a run is in flight collapse into one run up to the newest", async () => {
+  const seen: number[] = [];
+  let release: () => void = () => {};
+  const loop = createLoop(
+    (upTo) => {
+      seen.push(upTo);
+      return upTo === 30 ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
+    },
+    { intervalS: 30, finalRun: false, latestOnly: true },
+  );
+  loop.advance(30);
+  await settle();
+  loop.advance(150);
+  await settle();
+  release();
+  await loop.flush();
+  loop.advance(180);
+  await loop.flush();
+  expect(seen).toEqual([30, 150, 180]);
+});
+
+test("with latestOnly, a run queued after cancelQueued is not skipped for a newer one that was cancelled", async () => {
+  const seen: number[] = [];
+  let release: () => void = () => {};
+  const loop = createLoop(
+    (upTo) => {
+      seen.push(upTo);
+      return upTo === 30 ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
+    },
+    { intervalS: 30, finalRun: false, latestOnly: true },
+  );
+  loop.advance(30);
+  await settle();
+  loop.advance(150);
+  loop.cancelQueued();
+  const ran = loop.tick(100);
+  release();
+  await ran;
+  expect(seen).toEqual([30, 100]);
+});

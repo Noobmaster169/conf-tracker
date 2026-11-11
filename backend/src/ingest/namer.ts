@@ -63,7 +63,8 @@ export function createNamer(deps: NamerDeps): Loop {
   }
 
   // No final run: a name found after the stop would help nobody, and it would cost a call.
-  return createLoop(run, { intervalS: config.name_interval_s, finalRun: false });
+  // Only the newest window is worth naming: a replay faster than the model would otherwise name voices minutes late.
+  return createLoop(run, { intervalS: config.name_interval_s, finalRun: false, latestOnly: true });
 }
 
 /** Reads the session's naming settings; null means this session does not name. Throws on a bad config or an unknown prompt version. */

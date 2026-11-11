@@ -19,19 +19,28 @@ export type LoopFactory = (input: { db: Queryable; hub: Hub; sessionId: string; 
 
 /**
  * A per-session job on stream time, one run at a time. Runs queue instead of skipping, so a replay faster than
- * the model makes the same calls a live run would, only later.
+ * the model makes the same calls a live run would, only later. With latestOnly, a run whose turn comes when a newer
+ * one is already queued is skipped: a job that only cares about now (naming who is talking) keeps up with a stream
+ * faster than the model instead of answering for minutes ago.
  */
-export function createLoop(run: (upTo: number) => Promise<void>, opts: { intervalS: number; finalRun: boolean }): Loop {
+export function createLoop(
+  run: (upTo: number) => Promise<void>,
+  opts: { intervalS: number; finalRun: boolean; latestOnly?: boolean },
+): Loop {
   let queue: Promise<void> = Promise.resolve();
   let next = opts.intervalS;
   let stopped = false;
   // Bumped by cancelQueued: a run queued under an older generation is skipped when its turn comes.
   let generation = 0;
+  // The furthest upTo queued in this generation, which latestOnly runs up to.
+  let newest = Number.NEGATIVE_INFINITY;
 
   function tick(upTo = Number.POSITIVE_INFINITY): Promise<void> {
     const queuedIn = generation;
+    newest = Math.max(newest, upTo);
+    const superseded = () => opts.latestOnly === true && upTo < newest;
     // Runs log their own failures; one that throws anyway must not wedge the queue.
-    queue = queue.then(() => (stopped || queuedIn !== generation ? undefined : run(upTo))).catch(() => undefined);
+    queue = queue.then(() => (stopped || queuedIn !== generation || superseded() ? undefined : run(upTo))).catch(() => undefined);
     return queue;
   }
 
@@ -53,6 +62,7 @@ export function createLoop(run: (upTo: number) => Promise<void>, opts: { interva
     },
     cancelQueued() {
       generation++;
+      newest = Number.NEGATIVE_INFINITY;
     },
     stop() {
       stopped = true;
