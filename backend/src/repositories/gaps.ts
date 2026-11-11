@@ -92,3 +92,21 @@ export async function supersede(db: Queryable, sessionId: string, t: number): Pr
     [sessionId, t],
   );
 }
+
+/**
+ * A main leg that began reading at `start` has stored everything up to `lastT`. Of the untouched gaps (no stage yet) that
+ * run past `start`: one it has read past is closed as filled, one it has entered is trimmed to begin at `lastT`, and one
+ * that began before `start` (a stop's gap a preempted gap leg had begun to read) is cut back to end at `start` once the
+ * leg has read anything. A gap is never closed for what the leg has yet to read, so a stop mid catch-up loses nothing.
+ * Answers whether untouched gaps past `lastT` remain for the leg to read.
+ */
+export async function coverRead(db: Queryable, sessionId: string, start: number, lastT: number): Promise<boolean> {
+  const base = "session_id = $1 and filled_at is null and stage is null and t1 > $2";
+  if (lastT > start) {
+    await db.query(`update session_gaps set t1 = $2 where ${base} and t0 < $2 - 1`, [sessionId, start]);
+  }
+  await db.query(`update session_gaps set filled_at = now() where ${base} and t0 >= $2 - 1 and t1 <= $3`, [sessionId, start, lastT]);
+  await db.query(`update session_gaps set t0 = $3 where ${base} and t0 >= $2 - 1 and t0 < $3 and t1 > $3`, [sessionId, start, lastT]);
+  const { rows } = await db.query<{ n: string }>(`select count(*) as n from session_gaps where ${base} and t1 > $3`, [sessionId, start, lastT]);
+  return Number(rows[0]!.n) > 0;
+}

@@ -84,7 +84,10 @@ export async function markStarted(db: Queryable, id: string, input: { startedAt:
 export async function setStatus(db: Queryable, id: string, status: SessionStatus): Promise<Session> {
   const { rows } = await db.query<Row>(
     // stopped_at is audited: a repeated stop must not move the original stop time.
-    `update sessions set status = $2, stopped_at = case when $2 = 'stopped' then coalesce(stopped_at, now()) else stopped_at end
+    // A stop also ends any recovery: a stopped video neither needs attention nor counts on from an old recovering time.
+    `update sessions set status = $2, stopped_at = case when $2 = 'stopped' then coalesce(stopped_at, now()) else stopped_at end,
+       attention = case when $2 = 'stopped' then null else attention end,
+       recovering_since = case when $2 = 'stopped' then null else recovering_since end
      where id = $1 returning ${COLUMNS}`,
     [id, status],
   );
@@ -115,7 +118,7 @@ export async function running(db: Queryable): Promise<Session[]> {
 /** Stops the session and keeps why, so an error end is never a black box. */
 export async function setError(db: Queryable, id: string, error: string): Promise<Session> {
   const { rows } = await db.query<Row>(
-    `update sessions set status = 'stopped', stopped_at = coalesce(stopped_at, now()), error = $2 where id = $1 returning ${COLUMNS}`,
+    `update sessions set status = 'stopped', stopped_at = coalesce(stopped_at, now()), error = $2, attention = null, recovering_since = null where id = $1 returning ${COLUMNS}`,
     [id, error],
   );
   return toFoundSession(id, rows[0]);

@@ -1255,7 +1255,10 @@ test("stopping a recovering video records the stretch it missed as a gap, and a 
     const hub = createHub(100);
     const clock = fakeClock();
     const broadcast = clock.now() / 1000 - 100;
-    const speech = scriptedSpeech([{ events: [startedOn(0, broadcast), seg(0, 10)] }, { events: [startedOn(10, broadcast)] }]);
+    const speech = scriptedSpeech([
+      { events: [startedOn(0, broadcast), seg(0, 10)] },
+      { events: [startedOn(10, broadcast), seg(10, 90), seg(90, 165)] },
+    ]);
     const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
@@ -1294,15 +1297,97 @@ test("stopping a recovering video whose stream clock is unknown records no gap a
   });
 });
 
-test("stopping a live video records no gap", async () => {
+test("stopping a live video near its live edge records no gap", async () => {
   await inRollback(async (tx) => {
     const clock = fakeClock();
-    const speech = scriptedSpeech([{ events: [startedOn(0, clock.now() / 1000 - 100), seg(0, 10)] }]);
+    const speech = scriptedSpeech([{ events: [startedOn(0, clock.now() / 1000 - 40), seg(0, 10)] }]);
     const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
     await (await conn(speech, 0)).done;
     await runner.stop(created.id);
     expect(await gaps.open(tx, created.id)).toEqual([]);
+  });
+});
+
+// --- Final fixes ---------------------------------------------------------------------------------------------------
+
+test("a stop's gap stays open while the resumed leg has not read past it; stopping again mid catch-up keeps the uncovered stretch", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const broadcast = clock.now() / 1000 - 100;
+    const speech = scriptedSpeech([
+      { events: [startedOn(0, broadcast), seg(0, 10)] },
+      { events: [startedOn(10, broadcast), seg(10, 40)] },
+    ]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry");
+    clock.advance(60_000);
+    await runner.stop(created.id);
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[10, 160]]);
+
+    // Resumed: the leg starts at 10 (live, not recovering) but has read only to 40 of a stream now at 220.
+    await runner.resume(created.id);
+    await until(() => speech.connections.length === 2, "the resumed leg");
+    await (await conn(speech, 1)).done;
+    await settle();
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[40, 160]]);
+
+    clock.advance(60_000);
+    await runner.stop(created.id);
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[40, 220]]);
+  });
+});
+
+test("a live video that is behind its known live edge by more than a minute records the stretch on stop", async () => {
+  await inRollback(async (tx) => {
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [startedOn(0, clock.now() / 1000 - 300), seg(0, 10)] }]);
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await runner.stop(created.id);
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[10, 300]]);
+  });
+});
+
+test("the live-edge gap a leg records when it starts later than asked is not closed by its own reading", async () => {
+  await inRollback(async (tx) => {
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [startedAt(42), seg(42, 50)] }]);
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await segments.insert(tx, created.id, { t0: 0, t1: 10, text: "before", words: [{ w: "before", t0: 0, t1: 10, p: 0.9, speaker_id: null }] });
+    await sessions.setStatus(tx, created.id, "degraded");
+    await runner.resume(created.id);
+    await (await conn(speech, 0)).done;
+    await settle();
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[10, 42]]);
+    await runner.stop(created.id);
+  });
+});
+
+test("stopping clears the recovering state and the attention note", async () => {
+  await inRollback(async (tx) => {
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setRecovering(tx, created.id);
+    await sessions.setAttention(tx, created.id, "recovering since 10:00 UTC: boom");
+    const stopped = await sessions.setStatus(tx, created.id, "stopped");
+    expect(stopped.recovering_since).toBeNull();
+    expect(stopped.attention).toBeNull();
+
+    const other = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setRecovering(tx, other.id);
+    await sessions.setAttention(tx, other.id, "x");
+    const errored = await sessions.setError(tx, other.id, "boom");
+    expect(errored.recovering_since).toBeNull();
+    expect(errored.attention).toBeNull();
   });
 });

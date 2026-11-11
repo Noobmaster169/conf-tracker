@@ -1,5 +1,5 @@
 import type { Gap, Session, SpeechEvent, StartMessage } from "../contracts";
-import type { Queryable } from "../db";
+import { atomic, type Queryable } from "../db";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { Hub } from "../realtime/hub";
@@ -22,6 +22,8 @@ const BACKOFF_S = [5, 10, 20, 40, 60];
 /** How long a video may stay recovering before it also asks for a person. */
 const ATTENTION_AFTER_MS = 15 * 60 * 1000;
 const DEFAULT_MAX_SPEED = 3;
+/** A live video stopped this far (seconds) behind its known live edge gets the stretch it had yet to read recorded as a gap. */
+const BEHIND_GAP_S = 60;
 /** What a video says when its speech ignored where a resume leg asked it to start. */
 export const SPEECH_TOO_OLD = "speech service too old to resume (update yt-stream speech)";
 
@@ -30,7 +32,10 @@ export type SetTimer = (fn: () => void, ms: number) => Cancel;
 
 export interface SessionRunner {
   start(sessionId: string): Promise<Session>;
-  /** Stops a video. One stopped while recovering gets the stretch it missed recorded as a gap, filled after the stream. */
+  /**
+   * Stops a video. One stopped while recovering, or live but over a minute behind a known live edge, gets the stretch it
+   * had yet to read recorded as a gap, filled after the stream.
+   */
   stop(sessionId: string): Promise<Session>;
   /**
    * Feeds a degraded or stopped video again, from its resume point. Answers once the video is marked recovering; the
@@ -61,7 +66,11 @@ interface LegState {
   rowId: number | null;
   rowEnded: boolean;
   requested: number;
+  /** Where speech began reading (its session.started), or null before that. */
+  startedAt: number | null;
   lastT: number;
+  /** Untouched gaps past what the leg has stored remain: each stored segment closes or trims those it read. */
+  covering: boolean;
   link: SpeechLink | null;
   tracker: SpeakerTracker;
   dead: boolean;
@@ -247,7 +256,9 @@ export function createSessionRunner(deps: {
       rowId: null,
       rowEnded: false,
       requested: 0,
+      startedAt: null,
       lastT: 0,
+      covering: false,
       link: null,
       // Its writes stop as soon as the leg is no longer the video's.
       tracker: createSpeakerTracker({ db, hub, sessionId: v.id, live: () => isCurrent(v, leg) }),
@@ -443,12 +454,18 @@ export function createSessionRunner(deps: {
         // Each write re-checks the leg: a stop and an instant resume may land between them, and a replaced leg writes nothing.
         if (leg.rowId !== null) await legs.started(db, leg.rowId, at);
         if (!isCurrent(v, leg)) return;
-        // This leg covers everything from where it was asked to start: a gap recorded there before (a stop's) is its now.
-        await gaps.supersede(db, v.id, leg.requested);
+        // Speech started later than asked (a live edge without rewind): what lies between is not covered, and this one
+        // gap takes the place of any recorded there before (a stop's). Otherwise a stop's gap closes only as the leg
+        // reads past it (see `coverRead`), so a stop during the catch-up loses nothing.
+        if (at > leg.requested + 1) {
+          await atomic(db, async (tx) => {
+            await gaps.supersede(tx, v.id, leg.requested);
+            await gaps.add(tx, v.id, leg.requested, at);
+          });
+        }
         if (!isCurrent(v, leg)) return;
-        // Speech started later than asked (a live edge without rewind): what lies between is not covered.
-        if (at > leg.requested + 1) await gaps.add(db, v.id, leg.requested, at);
-        if (!isCurrent(v, leg)) return;
+        leg.startedAt = at;
+        leg.covering = true;
         if (typeof event.broadcast_start === "number") v.broadcastStart = event.broadcast_start;
         leg.lastT = Math.max(leg.lastT, at);
         v.attempt = 0;
@@ -463,6 +480,9 @@ export function createSessionRunner(deps: {
         leg.lastT = Math.max(leg.lastT, stored.t1);
         hub.publish(v.id, { type: "segment", data: stored });
         for (const loop of v.loops ?? []) loop.advance(stored.t1);
+        if (leg.covering && leg.startedAt !== null && isCurrent(v, leg)) {
+          leg.covering = await gaps.coverRead(db, v.id, leg.startedAt, leg.lastT);
+        }
         return;
       }
       case "health": {
@@ -557,22 +577,27 @@ export function createSessionRunner(deps: {
   /**
    * A video stopped while recovering missed the stream from its resume point to now. On a live stream whose clock is
    * known (a leg said when the broadcast began) that stretch is recorded as a gap, which the sweeper fills from the
-   * recording once the stream has ended. Without the clock, nothing is recorded and the video says so.
+   * recording once the stream has ended. Without the clock, nothing is recorded and the video says so. A video stopped
+   * while live (`recovering` false) records the stretch only when the clock is known and it was more than
+   * BEHIND_GAP_S behind the live edge (a leg still catching up after a rewind).
    */
-  async function recordMissed(id: string, known: number | null): Promise<void> {
+  async function recordMissed(id: string, known: number | null, recovering: boolean): Promise<void> {
     const t0 = await resumePoint(db, id);
     const broadcastStart = known ?? (await storedBroadcastStart(id));
     if (broadcastStart === null) {
+      if (!recovering) return;
       const text = `stopped while recovering: the stream after ${Math.round(t0)} s is not recorded as a gap (its clock is unknown); resume to read it`;
       log.warn({ sessionId: id, t0 }, "stopped while recovering with no stream clock; no gap recorded");
       publishSession(await sessions.setAttention(db, id, text));
       return;
     }
     const t1 = Math.floor((now() / 1000 - broadcastStart) * 2) / 2;
-    if (t1 <= t0 + 1) return;
+    if (t1 <= t0 + (recovering ? 1 : BEHIND_GAP_S)) return;
     // A gap an earlier stop recorded from the same point is this one's, shorter: one gap, never two over each other.
-    await gaps.supersede(db, id, t0);
-    await gaps.add(db, id, t0, t1);
+    await atomic(db, async (tx) => {
+      await gaps.supersede(tx, id, t0);
+      await gaps.add(tx, id, t0, t1);
+    });
   }
 
   return {
@@ -589,7 +614,7 @@ export function createSessionRunner(deps: {
     async stop(sessionId) {
       const v = videos.get(sessionId);
       let leg: LegState | null = null;
-      const missed = v !== undefined && v.recoveringSince !== null;
+      const recovering = v !== undefined && v.recoveringSince !== null;
       if (v) {
         forget(v);
         leg = v.leg;
@@ -601,11 +626,12 @@ export function createSessionRunner(deps: {
       publishSession(session);
       leg?.link?.close();
       if (leg) await endLegRow(leg, "stopped");
-      if (missed) {
+      if (v) {
         try {
-          await recordMissed(sessionId, v.broadcastStart);
+          // Recovering, or live but maybe still catching up: either way what it had yet to read is kept as a gap.
+          await recordMissed(sessionId, v.broadcastStart, recovering);
         } catch (error) {
-          log.error({ sessionId, err: errorText(error) }, "recording the stretch a stopped recovering video missed failed");
+          log.error({ sessionId, err: errorText(error) }, "recording the stretch a stopped video missed failed");
         }
       }
       return session;
