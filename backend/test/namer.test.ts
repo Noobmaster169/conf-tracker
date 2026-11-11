@@ -77,8 +77,8 @@ test("a failed naming call is tried again on the next tick, and the factory hono
     await namer.tick();
     expect(llm.requests).toHaveLength(2);
     expect((await speakers.get(tx, s.id, "S2"))?.name).toBe("Cathie Wood");
-    expect(namerFactory(llm.client)({ db: tx, hub, sessionId: s.id, config: { name: false } })).toBeNull();
-    expect(() => namerFactory(llm.client)({ db: tx, hub, sessionId: s.id, config: { name_floor: 2 } })).toThrow();
+    expect(namerFactory(llm.client)({ db: tx, hub, sessionId: s.id, config: { name: false }, resumeAt: 0 })).toBeNull();
+    expect(() => namerFactory(llm.client)({ db: tx, hub, sessionId: s.id, config: { name_floor: 2 }, resumeAt: 0 })).toThrow();
   });
 });
 

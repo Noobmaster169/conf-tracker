@@ -25,11 +25,19 @@ test("nothing fresh means no window", () => {
   expect(selectWindow([], 0, cfg)).toBeNull();
 });
 
-test("the fresh part never reaches back more than extract_max_s", () => {
-  const lines = minute(0, 30); // t 0 to 299, cursor still at 0 after a long outage
-  const window = selectWindow(lines, 0, cfg)!;
-  expect(window.fresh[0]?.t0).toBe(180);
-  expect(window.context.map((l) => l.t0)).toEqual([120, 130, 140, 150, 160, 170]);
+test("a window after an outage starts at the cursor, not at the last extract_max_s", () => {
+  const lines = minute(0, 61); // t 0 to 609, cursor at 100 after a long outage
+  const window = selectWindow(lines, 100, cfg)!;
+  expect(window.fresh[0]?.t0).toBe(100);
+  expect(window.fresh.at(-1)!.t1).toBeLessThanOrEqual(220);
+  expect(window.fresh.map((l) => l.t0)).toEqual([100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210]);
+  expect(window.context.map((l) => l.t0)).toEqual([40, 50, 60, 70, 80, 90]);
+  expect([window.t0, window.t1]).toEqual([40, 219]);
+});
+
+test("one fresh line longer than extract_max_s is still a window of its own", () => {
+  const window = selectWindow([line(0, 5, "a"), line(10, 300, "long"), line(300, 305, "b")], 5, cfg)!;
+  expect(window.fresh.map((l) => l.text)).toEqual(["long"]);
 });
 
 test("rendering: mm:ss, the speaker tag, the sections", () => {

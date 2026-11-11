@@ -48,14 +48,14 @@ test("a tick extracts the fresh lines, publishes call and claims.new, and the ne
   });
 });
 
-test("a failed tick keeps the cursor and the next tick tries the same lines again; the fresh part never reaches back more than extract_max_s", async () => {
+test("a failed tick keeps the cursor and the next tick tries the same lines again before anything later", async () => {
   await inRollback(async (tx) => {
     const hub = createHub(100);
     const seen: LiveEvent[] = [];
     const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     hub.subscribe(s.id, (e) => seen.push(e));
     await say(tx, s.id, 0, "first words");
-    const llm = fakeLlm([new Error("llm-proxy unreachable"), claimsAnswer("late words")]);
+    const llm = fakeLlm([new Error("llm-proxy unreachable"), claimsAnswer("first words"), claimsAnswer("late words")]);
     const extractor = createExtractor({ db: tx, hub, sessionId: s.id, llm: llm.client, config });
 
     await extractor.tick();
@@ -65,9 +65,57 @@ test("a failed tick keeps the cursor and the next tick tries the same lines agai
     await say(tx, s.id, 200, "late words");
     await extractor.tick();
     expect(llm.requests).toHaveLength(2);
-    expect(llm.requests[1]?.user).not.toContain("first words");
-    expect(llm.requests[1]?.user).toContain("[03:20 S1] late words");
-    expect(seen.map((e) => e.type)).toEqual(["call", "call", "claims.new"]);
+    expect(llm.requests[1]?.user).toContain("[00:00 S1] first words");
+    expect(llm.requests[1]?.user).not.toContain("late words");
+    await extractor.tick();
+    expect(llm.requests[2]?.user).toContain("## new lines (extract from these)\n[03:20 S1] late words");
+    expect(seen.map((e) => e.type)).toEqual(["call", "call", "claims.new", "call", "claims.new"]);
+  });
+});
+
+const NO_CLAIMS = JSON.stringify({ claims: [] });
+const freshStart = (request: LlmRequest | undefined) => request?.user.split("## new lines (extract from these)\n")[1]?.slice(1, 6);
+const answered = async (db: Parameters<typeof calls.latest>[0], sessionId: string) =>
+  (await calls.latest(db, sessionId, 100)).filter((c) => c.step === "extract").map((c) => [c.window_t1, c.error === null]);
+
+test("a new extractor picks up after the last answered window and drains the backlog in order", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    for (let t = 0; t < 700; t += 10) await say(tx, s.id, t, `w${t}`);
+    await calls.insert(tx, s.id, {
+      step: "extract", promptVersion: "v1", model: "haiku", windowT0: 180, windowT1: 300, attempt: 1, input: "x", output: null, parsed: null,
+      inputTokens: null, outputTokens: null, costUsd: null, latencyMs: 1, error: null,
+    });
+    await calls.insert(tx, s.id, {
+      step: "extract", promptVersion: "v1", model: "haiku", windowT0: 300, windowT1: 500, attempt: 1, input: "x", output: null, parsed: null,
+      inputTokens: null, outputTokens: null, costUsd: null, latencyMs: 1, error: "llm-proxy unreachable",
+    });
+    const llm = fakeLlm(NO_CLAIMS);
+    const extractor = createExtractor({ db: tx, hub, sessionId: s.id, llm: llm.client, config });
+
+    expect(await extractor.drain()).toBe(true);
+    expect(llm.requests.map(freshStart)).toEqual(["05:00", "07:00", "09:00", "11:00"]);
+    expect(llm.requests[0]?.user.split("## new lines")[1]).not.toContain("w290");
+    expect((await answered(tx, s.id)).slice(2)).toEqual([[410.5, true], [530.5, true], [650.5, true], [690.5, true]]);
+    expect(await extractor.drain()).toBe(true);
+    expect(llm.requests).toHaveLength(4);
+  });
+});
+
+test("drain stops at a failed call and leaves the cursor; the next drain resumes there", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    for (let t = 0; t < 300; t += 10) await say(tx, s.id, t, `w${t}`);
+    const llm = fakeLlm([NO_CLAIMS, new Error("llm-proxy unreachable"), NO_CLAIMS]);
+    const extractor = createExtractor({ db: tx, hub, sessionId: s.id, llm: llm.client, config });
+
+    expect(await extractor.drain()).toBe(false);
+    expect(llm.requests.map(freshStart)).toEqual(["00:00", "02:00"]);
+    expect(await extractor.drain()).toBe(true);
+    expect(llm.requests.map(freshStart)).toEqual(["00:00", "02:00", "02:00", "04:00"]);
+    expect(await answered(tx, s.id)).toEqual([[110.5, true], [230.5, false], [230.5, true], [290.5, true]]);
   });
 });
 
@@ -105,10 +153,10 @@ test("the factory reads the session config, answers null when extraction is off,
     const hub = createHub(10);
     const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     const factory = extractorFactory(fakeLlm("x").client);
-    expect(factory({ db: tx, hub, sessionId: s.id, config: { extract: false } })).toBeNull();
-    expect(factory({ db: tx, hub, sessionId: s.id, config: { speed: 2 } })).not.toBeNull();
-    expect(() => factory({ db: tx, hub, sessionId: s.id, config: { extract_prompt: "v99" } })).toThrow(/no prompt extract\/v99/);
-    expect(() => factory({ db: tx, hub, sessionId: s.id, config: { extract_interval_s: -1 } })).toThrow();
+    expect(factory({ db: tx, hub, sessionId: s.id, config: { extract: false }, resumeAt: 0 })).toBeNull();
+    expect(factory({ db: tx, hub, sessionId: s.id, config: { speed: 2 }, resumeAt: 0 })).not.toBeNull();
+    expect(() => factory({ db: tx, hub, sessionId: s.id, config: { extract_prompt: "v99" }, resumeAt: 0 })).toThrow(/no prompt extract\/v99/);
+    expect(() => factory({ db: tx, hub, sessionId: s.id, config: { extract_interval_s: -1 }, resumeAt: 0 })).toThrow();
   });
 });
 

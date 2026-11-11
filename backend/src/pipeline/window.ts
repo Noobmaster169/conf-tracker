@@ -13,17 +13,21 @@ export interface WindowConfig {
 }
 
 /**
- * The lines since the cursor (fresh), preceded by the tail before them (context). The fresh
- * part never reaches back more than extract_max_s, so an outage cannot grow one call without bound.
+ * The lines since the cursor (fresh), preceded by the tail before them (context). The fresh part starts at the cursor
+ * and spans at most extract_max_s (always at least one line), so an outage cannot grow one call without bound; what is
+ * left is the next window's. Nothing is ever skipped.
  */
 export function selectWindow(lines: Line[], cursorT: number, cfg: WindowConfig): Window | null {
-  const last = lines.at(-1);
-  if (!last) return null;
-  const bound = Math.max(cursorT, last.t1 - cfg.extract_max_s);
-  const fresh = lines.filter((line) => line.t1 > bound);
-  if (fresh.length === 0) return null;
-  const context = lines.filter((line) => line.t1 <= bound && line.t1 > bound - cfg.context_tail_s);
-  const first = context[0] ?? fresh[0]!;
+  const fresh: Line[] = [];
+  for (const line of lines) {
+    if (line.t1 <= cursorT) continue;
+    if (fresh.length > 0 && line.t1 - fresh[0]!.t0 > cfg.extract_max_s) break;
+    fresh.push(line);
+  }
+  const start = fresh[0];
+  if (!start) return null;
+  const context = lines.filter((line) => line.t1 <= start.t0 && line.t1 > start.t0 - cfg.context_tail_s);
+  const first = context[0] ?? start;
   return { context, fresh, t0: first.t0, t1: fresh.at(-1)!.t1 };
 }
 

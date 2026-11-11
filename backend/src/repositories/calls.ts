@@ -95,3 +95,12 @@ export async function totalCost(db: Queryable, sessionId: string, upToId: number
   );
   return rows[0]?.total ?? 0;
 }
+
+/** Where a step's answered windows reach: the furthest window_t1 of its calls that did not fail, 0 when none did. */
+export async function lastAnsweredWindow(db: Queryable, sessionId: string, step: "extract"): Promise<number> {
+  const { rows } = await db.query<{ t1: number }>(
+    `select coalesce(max(window_t1), 0)::float8 as t1 from llm_calls where session_id = $1 and step = $2 and error is null`,
+    [sessionId, step],
+  );
+  return rows[0]?.t1 ?? 0;
+}

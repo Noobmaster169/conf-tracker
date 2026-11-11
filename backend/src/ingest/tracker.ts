@@ -28,6 +28,8 @@ export interface TrackerDeps {
   sessionId: string;
   llm: LlmClient;
   config: TrackConfig;
+  /** The stored progress the video resumes from: the first stream-time boundary is the one after it. */
+  resumeAt?: number;
   summarize?: Summarize;
 }
 
@@ -97,7 +99,7 @@ export function createTracker(deps: TrackerDeps): Loop {
     }
   }
 
-  const loop = createLoop(run, { intervalS: deps.config.track_interval_s, finalRun: false });
+  const loop = createLoop(run, { intervalS: deps.config.track_interval_s, finalRun: false, startAfter: deps.resumeAt ?? 0 });
   return {
     ...loop,
     // The video is over: whatever was on stage ends where the transcript does, and gets its summary too.
@@ -118,9 +120,9 @@ export function createTracker(deps: TrackerDeps): Loop {
 
 /** Reads the video's tracker settings; null means this video does not track. Throws on a bad config or an unknown prompt version. */
 export function trackerFactory(llm: LlmClient, summarize?: Summarize): LoopFactory {
-  return ({ db, hub, sessionId, config }) => {
+  return ({ db, hub, sessionId, config, resumeAt }) => {
     const parsed = TrackConfig.parse(config);
     if (!parsed.track) return null;
-    return createTracker({ db, hub, sessionId, llm, config: parsed, summarize });
+    return createTracker({ db, hub, sessionId, llm, config: parsed, summarize, resumeAt });
   };
 }

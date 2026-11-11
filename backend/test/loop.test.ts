@@ -139,3 +139,12 @@ test("with latestOnly, a run queued after cancelQueued is not skipped for a newe
   await ran;
   expect(seen).toEqual([30, 100]);
 });
+
+test("startAfter puts the first boundary after it", async () => {
+  const seen: number[] = [];
+  const loop = createLoop(async (upTo) => void seen.push(upTo), { intervalS: 30, finalRun: false, startAfter: 95 });
+  loop.advance(100);
+  loop.advance(130);
+  await loop.flush();
+  expect(seen).toEqual([120]);
+});

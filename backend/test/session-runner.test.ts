@@ -269,6 +269,7 @@ function fakeExtractors() {
       advance: (t) => void log.push(`advance ${sessionId} ${t}`),
       cancelQueued: () => void log.push(`cancel ${sessionId}`),
       stop: () => void log.push(`stop ${sessionId}`),
+      drain: async () => true,
     };
     return extractor;
   };

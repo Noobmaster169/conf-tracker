@@ -26,6 +26,8 @@ export interface NamerDeps {
   sessionId: string;
   llm: LlmClient;
   config: NameConfig;
+  /** The stored progress the video resumes from: the first stream-time boundary is the one after it. */
+  resumeAt?: number;
 }
 
 /** One per live session: every interval of stream time, when someone in the last few minutes has no name, the model is asked who they are. */
@@ -68,14 +70,14 @@ export function createNamer(deps: NamerDeps): Loop {
 
   // No final run: a name found after the stop would help nobody, and it would cost a call.
   // Only the newest window is worth naming: a replay faster than the model would otherwise name voices minutes late.
-  return createLoop(run, { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true });
+  return createLoop(run, { intervalS: deps.config.name_interval_s, finalRun: false, latestOnly: true, startAfter: deps.resumeAt ?? 0 });
 }
 
 /** Reads the session's naming settings; null means this session does not name. Throws on a bad config or an unknown prompt version. */
 export function namerFactory(llm: LlmClient): LoopFactory {
-  return ({ db, hub, sessionId, config }) => {
+  return ({ db, hub, sessionId, config, resumeAt }) => {
     const parsed = NameConfig.parse(config);
     if (!parsed.name) return null;
-    return createNamer({ db, hub, sessionId, llm, config: parsed });
+    return createNamer({ db, hub, sessionId, llm, config: parsed, resumeAt });
   };
 }

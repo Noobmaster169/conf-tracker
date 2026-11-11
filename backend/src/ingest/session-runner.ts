@@ -4,6 +4,7 @@ import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { Hub } from "../realtime/hub";
 import * as events from "../repositories/events";
+import { resumePoint } from "../repositories/resume";
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
 import type { Loop, LoopFactory } from "./loop";
@@ -116,10 +117,12 @@ export function createSessionRunner(deps: { db: Queryable; hub: Hub; connect: Sp
       speed: typeof speed === "number" ? speed : undefined,
       config: session.config,
     };
+    // The loops' first boundaries come after what is already stored, so a restarted video does not replay them all.
+    const resumeAt = await resumePoint(db, sessionId);
     // Built before the socket opens: a bad config or a missing prompt version fails the start with nothing to clean up.
     let own: Loop[];
     try {
-      own = factories.map((factory) => factory({ db, hub, sessionId, config: session.config })).filter((loop): loop is Loop => loop !== null);
+      own = factories.map((factory) => factory({ db, hub, sessionId, config: session.config, resumeAt })).filter((loop): loop is Loop => loop !== null);
     } catch (error) {
       publishSession(await sessions.setStatus(db, sessionId, "degraded"));
       throw error;
