@@ -904,3 +904,108 @@ test("resumeAll ends the leg rows a previous process left open", async () => {
     await runner.stop(created.id);
   });
 });
+
+// --- Fix round 2 ---------------------------------------------------------------------------------------------------
+
+test("a database error reading the event numbering during resumeAll is retried, and the next leg numbers after the stored events", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let failMaxSeq = true;
+    const db = hookedDb(tx, (text) => {
+      if (failMaxSeq && text.includes("coalesce(max(seq), 0)")) {
+        failMaxSeq = false;
+        throw new Error("too many connections");
+      }
+    });
+    const speech = scriptedSpeech([{ events: [started, segment] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await tx.query("update sessions set status = 'stopped' where status in ('starting', 'live', 'recovering') and id <> $1", [created.id]);
+    await sessions.markStarted(tx, created.id, { startedAt: "2026-11-16T09:00:00.000Z", models: {} });
+    for (const seq of [1, 2, 3]) await events.append(tx, created.id, seq, "health", { t: seq });
+
+    await runner.resumeAll();
+    await until(() => clock.pending() === 1, "a retry after the failed read");
+    clock.fireNext();
+    await until(() => speech.connections.length === 1, "the leg");
+    await speech.connections[0]!.done;
+
+    expect((await events.list(tx, created.id)).map((e) => e.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    expect((await segments.list(tx, created.id, {})).map((s) => s.text)).toEqual(["hello"]);
+    await runner.stop(created.id);
+  });
+});
+
+test.each([
+  ["markStarted", "update sessions set status = 'live'"],
+  ["setRecovering", "update sessions set status = 'recovering'"],
+])("a stopped video's late %s, answered after an instant resume, leaves the resumed video's status alone", async (kind, query) => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let armed = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let landed = false;
+    // The write reaches Postgres at once; only its answer comes back late, as a slow connection would.
+    const db: Queryable = {
+      query: async <R extends QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>> => {
+        const result = await tx.query<R>(text, values);
+        if (armed && text.startsWith(query)) {
+          armed = false;
+          landed = true;
+          await held;
+        }
+        return result;
+      },
+    };
+    const speech = scriptedSpeech([{ events: [] }, { events: [startedAt(0)] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+
+    armed = true;
+    const old = kind === "markStarted" ? speech.connections[0]!.emit(started) : speech.connections[0]!.drop("socket reset");
+    await until(() => landed, "the old write");
+    await runner.stop(created.id);
+    await runner.resume(created.id);
+    await speech.connections[1]!.done;
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    release();
+    await old;
+    await settle();
+
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    expect(clock.pending()).toBe(0);
+    expect(runner.live()).toEqual([created.id]);
+    await runner.stop(created.id);
+  });
+});
+
+test("a revive whose first write fails still opens a leg", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let failRecovering = true;
+    const db = hookedDb(tx, (text) => {
+      if (failRecovering && text.includes("status = 'recovering'")) {
+        failRecovering = false;
+        throw new Error("connection reset by peer");
+      }
+    });
+    const speech = scriptedSpeech([{ events: [started] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setStatus(tx, created.id, "degraded");
+
+    await runner.resume(created.id);
+    await until(() => speech.connections.length === 1, "the leg");
+    await speech.connections[0]!.done;
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    expect(runner.live()).toEqual([created.id]);
+    await runner.stop(created.id);
+  });
+});

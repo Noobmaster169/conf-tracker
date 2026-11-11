@@ -91,9 +91,31 @@ export function createSessionRunner(deps: {
 
   const publishSession = (session: Session) => hub.publish(session.id, { type: "session", data: session });
 
-  /** Publishes a status write that may have landed after a stop; if so the stop wins and is written again. */
+  /** Another Video now holds this id (a stop, then a resume): the old one must not touch the row any more. */
+  const replaced = (v: Video) => {
+    const holder = videos.get(v.id);
+    return holder !== undefined && holder !== v;
+  };
+
+  /**
+   * Publishes a status write that may have landed after a stop; if so the stop wins and is written again, unless a
+   * new Video already holds the id, whose status is then the row's and is left alone.
+   */
   async function publishUnlessStopped(v: Video, session: Session): Promise<void> {
-    publishSession(v.done && session.status !== "stopped" ? await sessions.setStatus(db, v.id, "stopped") : session);
+    if (replaced(v)) return;
+    if (!v.done || session.status === "stopped") {
+      publishSession(session);
+      return;
+    }
+    const stopped = await sessions.setStatus(db, v.id, "stopped");
+    if (!replaced(v)) publishSession(stopped);
+  }
+
+  /** A status write by a Video that is ending (degraded, stopped): skipped once a new Video holds the id. */
+  async function writeFinalStatus(v: Video, status: "degraded" | "stopped"): Promise<void> {
+    if (replaced(v)) return;
+    const session = await sessions.setStatus(db, v.id, status);
+    if (!replaced(v)) publishSession(session);
   }
 
   const forget = (v: Video) => {
@@ -179,9 +201,16 @@ export function createSessionRunner(deps: {
       if (gone()) return;
       r = await resumePoint(db, v.id);
       if (gone()) return;
+      if (!seqs.has(v.id)) {
+        // Numbering continues from storage. Read on every open until it succeeds once: a failed read must not leave
+        // the video numbering from 1 into the stored events' keys.
+        const stored = await events.maxSeq(db, v.id);
+        seqs.set(v.id, Math.max(stored, seqs.get(v.id) ?? 0));
+        if (gone()) return;
+      }
       if (v.loops === null) {
         // Built once per video, before its first socket: a bad config or a missing prompt version fails with nothing
-        // to clean up, and a reopened leg keeps the same loops (and their queues). Numbering continues from storage.
+        // to clean up, and a reopened leg keeps the same loops (and their queues).
         const resumeAt = r;
         try {
           v.loops = factories
@@ -191,9 +220,6 @@ export function createSessionRunner(deps: {
           terminal = true;
           throw error;
         }
-        const stored = await events.maxSeq(db, v.id);
-        seqs.set(v.id, Math.max(stored, seqs.get(v.id) ?? 0));
-        if (gone()) return;
       }
     } catch (error) {
       if (gone()) return;
@@ -205,7 +231,7 @@ export function createSessionRunner(deps: {
       forget(v);
       v.leg = null;
       releaseLoops(v, { cancel: true });
-      publishSession(await sessions.setStatus(db, v.id, "degraded"));
+      await writeFinalStatus(v, "degraded");
       throw error;
     }
 
@@ -243,7 +269,7 @@ export function createSessionRunner(deps: {
         v.leg = null;
         releaseLoops(v, { cancel: true });
         await endLegRow(leg, "error");
-        publishSession(await sessions.setStatus(db, v.id, "degraded"));
+        await writeFinalStatus(v, "degraded");
         throw error;
       }
       await legFailed(v, leg, errorText(error));
@@ -295,7 +321,7 @@ export function createSessionRunner(deps: {
     v.leg = null;
     releaseLoops(v);
     await endLegRow(leg, reason);
-    publishSession(await sessions.setStatus(db, v.id, "stopped"));
+    await writeFinalStatus(v, "stopped");
   }
 
   async function handle(v: Video, leg: LegState, event: SpeechEvent): Promise<void> {
@@ -384,10 +410,17 @@ export function createSessionRunner(deps: {
     const v = newVideo(session.id);
     v.recoveringSince = since;
     v.first = (async () => {
-      const recovering = await sessions.setRecovering(db, v.id);
-      await publishUnlessStopped(v, recovering);
+      let shown = session;
+      try {
+        shown = await sessions.setRecovering(db, v.id);
+        await publishUnlessStopped(v, shown);
+      } catch (error) {
+        // The leg is opened anyway: its own failures (the database still down) schedule retries, so the video is never
+        // held without a leg or a retry.
+        log.error({ sessionId: v.id, err: errorText(error) }, "marking a revived video recovering failed; opening its leg anyway");
+      }
       await openLeg(v, { loud: false });
-      return recovering;
+      return shown;
     })();
     return v.first;
   }
