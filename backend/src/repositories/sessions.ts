@@ -19,9 +19,11 @@ interface Row {
   created_at: Date;
   stage_id: string | null;
   title: string | null;
+  attention: string | null;
+  recovering_since: Date | null;
 }
 
-export const COLUMNS = "id, source_url, source_file, replay_of, status, started_at, stopped_at, config, models, error, created_at, stage_id, title";
+export const COLUMNS = "id, source_url, source_file, replay_of, status, started_at, stopped_at, config, models, error, created_at, stage_id, title, attention, recovering_since";
 
 function toFoundSession(id: string, row: Row | undefined): Session {
   if (!row) throw new TerminalError(`session ${id} not found`);
@@ -36,6 +38,7 @@ export function toSession(row: Row): Session {
     video_id: row.source_url ? videoIdFromUrl(row.source_url) : null,
     started_at: row.started_at?.toISOString() ?? null,
     stopped_at: row.stopped_at?.toISOString() ?? null,
+    recovering_since: row.recovering_since?.toISOString() ?? null,
     created_at: row.created_at.toISOString(),
   });
 }
@@ -71,7 +74,7 @@ export async function list(db: Queryable): Promise<Session[]> {
 
 export async function markStarted(db: Queryable, id: string, input: { startedAt: string; models: Record<string, string> }): Promise<Session> {
   const { rows } = await db.query<Row>(
-    `update sessions set status = 'live', started_at = $2, models = $3 where id = $1 returning ${COLUMNS}`,
+    `update sessions set status = 'live', started_at = $2, models = $3, attention = null, recovering_since = null where id = $1 returning ${COLUMNS}`,
     [id, input.startedAt, JSON.stringify(input.models)],
   );
   return toFoundSession(id, rows[0]);
@@ -85,6 +88,27 @@ export async function setStatus(db: Queryable, id: string, status: SessionStatus
     [id, status],
   );
   return toFoundSession(id, rows[0]);
+}
+
+/** Marks a video whose feed broke and is being reopened. The first moment is kept across repeated calls. */
+export async function setRecovering(db: Queryable, id: string): Promise<Session> {
+  const { rows } = await db.query<Row>(
+    `update sessions set status = 'recovering', recovering_since = coalesce(recovering_since, now()) where id = $1 returning ${COLUMNS}`,
+    [id],
+  );
+  return toFoundSession(id, rows[0]);
+}
+
+/** A note for the operator on a video that needs a person, or null to clear it. */
+export async function setAttention(db: Queryable, id: string, text: string | null): Promise<Session> {
+  const { rows } = await db.query<Row>(`update sessions set attention = $2 where id = $1 returning ${COLUMNS}`, [id, text]);
+  return toFoundSession(id, rows[0]);
+}
+
+/** Videos that should have a feed: starting, live, or being recovered. */
+export async function running(db: Queryable): Promise<Session[]> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from sessions where status in ('starting', 'live', 'recovering') order by created_at`);
+  return rows.map(toSession);
 }
 
 /** Rows a previous process left mid-flight. Nothing serves them any more, so they are degraded, not live. */
@@ -134,7 +158,7 @@ export async function replayCount(db: Queryable, id: string): Promise<number> {
 }
 
 // Everything stored for a video, children before what they point at: speakers and claims name the calls that made them.
-const OWNED = ["talk_summaries", "talk_spans", "name_proposals", "claims", "speakers", "turns", "diar_windows", "segments", "events", "llm_calls"] as const;
+const OWNED = ["session_legs", "session_gaps", "talk_summaries", "talk_spans", "name_proposals", "claims", "speakers", "turns", "diar_windows", "segments", "events", "llm_calls"] as const;
 
 /**
  * Takes a video out for good, with its transcript, voices, claims, timeline, summaries and model calls. The people it

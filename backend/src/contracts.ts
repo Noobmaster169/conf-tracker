@@ -49,6 +49,9 @@ export const SpeechEvent = z.discriminatedUnion("type", [
     source: z.record(z.string(), z.string()),
     models: z.record(z.string(), z.string()),
     config: SessionConfig,
+    // Stream seconds. A speech image from before resume omits both.
+    start_at: z.number().default(0),
+    broadcast_start: z.number().nullable().default(null),
   }),
   z.object({ type: z.literal("asr.segment"), t0: z.number(), t1: z.number(), text: z.string(), words: z.array(SpeechWord) }),
   z.object({
@@ -59,6 +62,7 @@ export const SpeechEvent = z.discriminatedUnion("type", [
     // A speech image from before diarization omits it.
     gpu_ms_diar: z.number().default(0),
     buffer_s: z.number(),
+    behind_s: z.number().nullable().default(null),
   }),
   z.object({ type: z.literal("diar.turns"), window: DiarWindow, turns: z.array(Turn), matches: z.array(Match), gpu_ms: z.number() }),
   z.object({ type: z.literal("speaker.new"), speaker_id: z.string(), first_seen_t: z.number() }),
@@ -77,10 +81,16 @@ export const StartMessage = z.object({
   replay_of: z.string().optional(),
   speed: z.number().optional(),
   config: SessionConfig,
+  start_at: z.number().optional(),
+  stop_at: z.number().optional(),
+  registry_from: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  speaker_floor: z.number().int().min(0).optional(),
+  max_speed: z.number().positive().optional(),
+  record: z.boolean().optional(),
 });
 export type StartMessage = z.infer<typeof StartMessage>;
 
-export const SessionStatus = z.enum(["starting", "live", "degraded", "stopped"]);
+export const SessionStatus = z.enum(["starting", "live", "recovering", "degraded", "stopped"]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
 export const Session = z.object({
@@ -98,8 +108,34 @@ export const Session = z.object({
   created_at: z.string(),
   stage_id: z.string().nullable(),
   title: z.string().nullable(),
+  attention: z.string().nullable(),
+  recovering_since: z.string().nullable(),
 });
 export type Session = z.infer<typeof Session>;
+
+export const Leg = z.object({
+  id: z.number(),
+  session_id: z.string(),
+  speech_id: z.string(),
+  kind: z.enum(["main", "gap"]),
+  requested_t: z.number(),
+  start_t: z.number().nullable(),
+  end_t: z.number().nullable(),
+  opened_at: z.string(),
+  ended_at: z.string().nullable(),
+  end_reason: z.string().nullable(),
+});
+export type Leg = z.infer<typeof Leg>;
+
+export const Gap = z.object({
+  id: z.number(),
+  session_id: z.string(),
+  t0: z.number(),
+  t1: z.number(),
+  filled_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export type Gap = z.infer<typeof Gap>;
 
 export const Segment = z.object({
   id: z.number(),

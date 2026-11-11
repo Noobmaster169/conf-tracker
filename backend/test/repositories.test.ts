@@ -2,6 +2,8 @@ import { afterAll, expect, test } from "vitest";
 
 import { closePool } from "../src/db";
 import * as events from "../src/repositories/events";
+import * as gaps from "../src/repositories/gaps";
+import * as legs from "../src/repositories/legs";
 import * as segments from "../src/repositories/segments";
 import * as sessions from "../src/repositories/sessions";
 import { inRollback } from "./db";
@@ -110,5 +112,54 @@ test("maxSeq is 0 for a fresh session and the highest stored seq after appends",
     await events.append(tx, session.id, 1, "health", { t: 1 });
     await events.append(tx, session.id, 2, "health", { t: 2 });
     expect(await events.maxSeq(tx, session.id)).toBe(2);
+  });
+});
+
+test("a recovering session round-trips, keeps its first recovering_since, and markStarted clears it and the attention note", async () => {
+  await inRollback(async (tx) => {
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    expect(created.attention).toBeNull();
+    expect(created.recovering_since).toBeNull();
+    const first = await sessions.setRecovering(tx, created.id);
+    expect(first.status).toBe("recovering");
+    expect(first.recovering_since).not.toBeNull();
+    expect(await sessions.get(tx, created.id)).toEqual(first);
+    await tx.query("select pg_sleep(0.01)");
+    const second = await sessions.setRecovering(tx, created.id);
+    expect(second.recovering_since).toBe(first.recovering_since);
+    expect((await sessions.setAttention(tx, created.id, "stuck")).attention).toBe("stuck");
+    expect((await sessions.running(tx)).map((s) => s.id)).toContain(created.id);
+    const live = await sessions.markStarted(tx, created.id, { startedAt: "2026-11-12T10:00:00.000Z", models: {} });
+    expect(live.attention).toBeNull();
+    expect(live.recovering_since).toBeNull();
+    expect((await sessions.setAttention(tx, created.id, null)).attention).toBeNull();
+    await sessions.setStatus(tx, created.id, "stopped");
+    expect((await sessions.running(tx)).map((s) => s.id)).not.toContain(created.id);
+  });
+});
+
+test("legs open, start, end and answer the latest; gaps list only unfilled ones in order; remove takes both", async () => {
+  await inRollback(async (tx) => {
+    const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    expect(await legs.latest(tx, s.id)).toBeNull();
+    const a = await legs.open(tx, s.id, { speechId: "x-1", kind: "main", requestedT: 0 });
+    expect(a).toMatchObject({ session_id: s.id, speech_id: "x-1", kind: "main", requested_t: 0, start_t: null, end_t: null, ended_at: null, end_reason: null });
+    await legs.started(tx, a.id, 0.5);
+    await legs.ended(tx, a.id, { endT: 30, reason: "error" });
+    const b = await legs.open(tx, s.id, { speechId: "x-2", kind: "gap", requestedT: 30 });
+    expect((await legs.latest(tx, s.id))?.id).toBe(b.id);
+    await legs.started(tx, b.id, 30);
+    expect((await legs.latest(tx, s.id))?.start_t).toBe(30);
+
+    const g2 = await gaps.add(tx, s.id, 50, 60);
+    const g1 = await gaps.add(tx, s.id, 10, 20);
+    const g3 = await gaps.add(tx, s.id, 70, 80);
+    await gaps.filled(tx, g3.id);
+    expect((await gaps.open(tx, s.id)).map((g) => g.id)).toEqual([g1.id, g2.id]);
+    expect(g1).toMatchObject({ t0: 10, t1: 20, filled_at: null });
+
+    expect(await sessions.remove(tx, s.id)).toBe(true);
+    expect((await tx.query("select 1 from session_legs where session_id = $1", [s.id])).rowCount).toBe(0);
+    expect((await tx.query("select 1 from session_gaps where session_id = $1", [s.id])).rowCount).toBe(0);
   });
 });

@@ -28,6 +28,8 @@ const started: SpeechEvent = {
   source: { url: URL },
   models: { asr: "large-v3" },
   config: {},
+  start_at: 0,
+  broadcast_start: null,
 };
 const segmentAt = (t0: number): SpeechEvent => ({ type: "asr.segment", t0, t1: t0 + 1, text: `at ${t0}`, words: [{ w: "at", t0, t1: t0 + 1, p: 1 }] });
 

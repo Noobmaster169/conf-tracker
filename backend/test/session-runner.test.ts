@@ -26,9 +26,11 @@ const started: SpeechEvent = {
   source: { url: URL },
   models: { asr: "large-v3" },
   config: {},
+  start_at: 0,
+  broadcast_start: null,
 };
 const segment: SpeechEvent = { type: "asr.segment", t0: 0, t1: 1.2, text: "hello", words: [{ w: "hello", t0: 0, t1: 1.2, p: 0.9 }] };
-const health: SpeechEvent = { type: "health", t: 1.2, lag_s: 3, gpu_ms_asr: 500, gpu_ms_diar: 0, buffer_s: 0.5 };
+const health: SpeechEvent = { type: "health", t: 1.2, lag_s: 3, gpu_ms_asr: 500, gpu_ms_diar: 0, buffer_s: 0.5, behind_s: null };
 
 test("a live session stores every event, the segment, and publishes in order", async () => {
   await inRollback(async (tx) => {

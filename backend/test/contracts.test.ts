@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { CallSummary, Claim, CreateSessionBody, ExtractConfig, LiveEvent, NameConfig, NameProposal, Snapshot, SpeechEvent } from "../src/contracts";
+import { CallSummary, Claim, CreateSessionBody, ExtractConfig, LiveEvent, NameConfig, NameProposal, Snapshot, SpeechEvent, StartMessage } from "../src/contracts";
 
 test("SpeechEvent parses what speech sends and rejects the rest", () => {
   const segment = SpeechEvent.parse({ type: "asr.segment", t0: 1, t1: 2, text: "hi", words: [{ w: "hi", t0: 1, t1: 2, p: 0.9 }] });
@@ -86,9 +86,26 @@ test("a proposal parses, and the snapshot needs the session cost", () => {
   expect(NameProposal.safeParse({ ...proposal, status: "maybe" }).success).toBe(false);
   const session = {
     id: "s", source_url: null, source_file: "x.wav", replay_of: null, video_id: null, status: "live", started_at: null, stopped_at: null,
-    config: {}, models: {}, error: null, created_at: "2026-09-29T00:00:00.000Z", stage_id: null, title: null,
+    config: {}, models: {}, error: null, created_at: "2026-09-29T00:00:00.000Z", stage_id: null, title: null, attention: null, recovering_since: null,
   };
   const snapshot = { session, segments: [], health: null, speakers: [], claims: [], calls: [], seq: 0, stage: null, talks: [], spans: [], people: [] };
   expect(Snapshot.safeParse(snapshot).success).toBe(false);
   expect(Snapshot.parse({ ...snapshot, cost_usd: 0.25 }).cost_usd).toBe(0.25);
+});
+
+test("session.started and health parse without the resume fields", () => {
+  const started = SpeechEvent.parse({ type: "session.started", session_id: "s", started_at: "2026-11-12T00:00:00.000Z", source: {}, models: {}, config: {} });
+  expect(started.type === "session.started" && [started.start_at, started.broadcast_start]).toEqual([0, null]);
+  const health = SpeechEvent.parse({ type: "health", t: 1, lag_s: 0, gpu_ms_asr: 0, buffer_s: 0 });
+  expect(health.type === "health" && health.behind_s).toBeNull();
+  const withBehind = SpeechEvent.parse({ type: "health", t: 1, lag_s: 0, gpu_ms_asr: 0, buffer_s: 0, behind_s: 12.5 });
+  expect(withBehind.type === "health" && withBehind.behind_s).toBe(12.5);
+});
+
+test("StartMessage mirrors the optional resume fields", () => {
+  expect(StartMessage.safeParse({ session_id: "s", config: {} }).success).toBe(true);
+  expect(StartMessage.safeParse({ session_id: "s", config: {}, start_at: 10, stop_at: 20, registry_from: "abc_1-2", speaker_floor: 3, max_speed: 3, record: false }).success).toBe(true);
+  expect(StartMessage.safeParse({ session_id: "s", config: {}, registry_from: "bad id!" }).success).toBe(false);
+  expect(StartMessage.safeParse({ session_id: "s", config: {}, speaker_floor: -1 }).success).toBe(false);
+  expect(StartMessage.safeParse({ session_id: "s", config: {}, max_speed: 0 }).success).toBe(false);
 });
