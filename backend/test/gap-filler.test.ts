@@ -202,6 +202,8 @@ test("a gap leg never opens while the video has a main leg", async () => {
     const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector });
     await runner.resume(s.id);
     expect(await runner.fillGap(s.id, gap)).toBe(false);
+    await until(() => speech.connections.length === 1);
+    await speech.connections[0]!.done;
     expect(speech.starts.map((x) => x.session_id)).toEqual([s.id]);
     await runner.stop(s.id);
   });
@@ -378,5 +380,19 @@ test("a gap at the end whose extraction failed is read once, left to the filler,
     const fresh = extractRequests(up.requests).flatMap((r) => [...section(r.user, "new lines (extract from these)").matchAll(/ g(\d+)/g)].map((m) => Number(m[1])));
     expect(fresh).toEqual(Array.from({ length: 10 }, (_, i) => 400 + i * 20));
     expect(await calls.lastAnsweredWindow(tx, s.id, "extract")).toBe(585);
+  });
+});
+
+test("a gap leg closed by a resume is not a failed try: the gap waits for no back-off once the video stops again", async () => {
+  await inRollback(async (tx) => {
+    const { s, gap } = await stoppedWithGap(tx);
+    await extracted(tx, s.id, 1200, []);
+    const real = createSessionRunner({ db: tx, hub: createHub(100), connect: scriptedSpeech([]).connector });
+    // The resume marks the video recovering, then the leg it closed answers false.
+    const runner = { ...real, fillGap: async () => { await sessions.setRecovering(tx, s.id); return false; } };
+    const filler = createGapFiller({ db: tx, hub: createHub(100), llm: fakeLlm(NO_CLAIMS).client, summarize: noSummary, runner });
+    await filler.advance(s.id);
+    await filler.legSettled();
+    expect((await gaps.get(tx, gap.id))?.tried_at).toBeNull();
   });
 });

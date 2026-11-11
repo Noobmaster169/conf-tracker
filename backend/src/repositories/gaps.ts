@@ -76,3 +76,19 @@ export async function startTrying(db: Queryable, gapId: number, at: Date): Promi
 export async function retryNoted(db: Queryable, sessionId: string): Promise<void> {
   await db.query("update session_gaps set note = null, since = null, tried_at = null where session_id = $1 and filled_at is null and note is not null", [sessionId]);
 }
+
+/**
+ * A leg asked to start at `t` covers everything from there on, by reading it or by recording a gap of its own: of the
+ * untouched gaps (no stage yet), those that begin at or after `t` are closed as filled, and one that runs past `t` is cut
+ * back to end there (a stop's gap that a preempted gap leg had begun to read, which moved the resume point into it).
+ */
+export async function supersede(db: Queryable, sessionId: string, t: number): Promise<void> {
+  await db.query(
+    "update session_gaps set filled_at = now() where session_id = $1 and filled_at is null and stage is null and t0 >= $2",
+    [sessionId, t - 1],
+  );
+  await db.query(
+    "update session_gaps set t1 = $2 where session_id = $1 and filled_at is null and stage is null and t0 < $2 and t1 > $2",
+    [sessionId, t],
+  );
+}

@@ -49,8 +49,9 @@ export const SpeechEvent = z.discriminatedUnion("type", [
     source: z.record(z.string(), z.string()),
     models: z.record(z.string(), z.string()),
     config: SessionConfig,
-    // Stream seconds. A speech image from before resume omits both.
-    start_at: z.number().default(0),
+    // Stream seconds. A speech image from before resume omits both: no default, so a leg asked to start past 0 can
+    // tell a speech that ignored where to start (and would say the transcript again from 0) from one that started at 0.
+    start_at: z.number().optional(),
     broadcast_start: z.number().nullable().default(null),
   }),
   z.object({ type: z.literal("asr.segment"), t0: z.number(), t1: z.number(), text: z.string(), words: z.array(SpeechWord) }),

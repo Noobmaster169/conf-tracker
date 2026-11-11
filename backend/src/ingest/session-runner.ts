@@ -22,20 +22,30 @@ const BACKOFF_S = [5, 10, 20, 40, 60];
 /** How long a video may stay recovering before it also asks for a person. */
 const ATTENTION_AFTER_MS = 15 * 60 * 1000;
 const DEFAULT_MAX_SPEED = 3;
+/** What a video says when its speech ignored where a resume leg asked it to start. */
+export const SPEECH_TOO_OLD = "speech service too old to resume (update yt-stream speech)";
 
 export type Cancel = () => void;
 export type SetTimer = (fn: () => void, ms: number) => Cancel;
 
 export interface SessionRunner {
   start(sessionId: string): Promise<Session>;
+  /** Stops a video. One stopped while recovering gets the stretch it missed recorded as a gap, filled after the stream. */
   stop(sessionId: string): Promise<Session>;
-  /** Feeds a degraded or stopped video again, from its resume point. */
+  /**
+   * Feeds a degraded or stopped video again, from its resume point. Answers once the video is marked recovering; the
+   * leg opens in the background once the video's holds and final loop runs have settled (a gap leg is closed instead).
+   */
   resume(sessionId: string): Promise<Session>;
   /** Feeds every video a previous process left running (starting, live, recovering); returns their ids. */
   resumeAll(): Promise<string[]>;
   live(): string[];
   /** Ids a sweep must leave alone: live ones, and ones whose final loop runs have not settled. */
   busy(): string[];
+  /** Ids with background work still settling on them: a final loop run after a release, or a hold. */
+  pending(): string[];
+  /** True while a start or resume of this video waits for its holds: background work on it should yield. */
+  wanted(sessionId: string): boolean;
   /** Registers background work on a video (a sweep's drain): it counts as busy, and a start or resume waits for it before opening a leg. */
   hold(sessionId: string, work: Promise<unknown>): void;
   /**
@@ -72,6 +82,8 @@ interface Video {
   attention: string | null;
   done: boolean;
   first: Promise<Session> | null;
+  /** Unix seconds the broadcast began, as the last leg that knew said; the stream clock of a missed stretch. */
+  broadcastStart: number | null;
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -100,11 +112,30 @@ export function createSessionRunner(deps: {
   const flushing = new Map<string, Set<Promise<unknown>>>();
   /** Background work registered through hold(), per id. */
   const holds = new Map<string, Set<Promise<unknown>>>();
-  const holdsSettled = async (id: string) => {
-    while (holds.get(id)?.size) await Promise.allSettled([...holds.get(id)!]);
-  };
-  /** Videos with a gap leg open. */
-  const gapLegs = new Set<string>();
+  /** Videos with a gap leg open, and how to close it. */
+  const gapLegs = new Map<string, AbortController>();
+  /** Videos whose start or resume waits for their background work to settle, and how many such waits each has. */
+  const waiting = new Map<string, number>();
+  /**
+   * Resolves once nothing settles on the video any more: no hold (a sweep's drain, a summary, a gap leg) and no final
+   * loop run of a released extractor, so the next leg's loops never run beside an old one. A gap leg is closed rather
+   * than waited for; the sweeper's drain yields at its next window (it sees `wanted`).
+   */
+  async function freed(id: string): Promise<void> {
+    waiting.set(id, (waiting.get(id) ?? 0) + 1);
+    try {
+      for (;;) {
+        const pending = [...(holds.get(id) ?? []), ...(flushing.get(id) ?? [])];
+        if (pending.length === 0) return;
+        gapLegs.get(id)?.abort();
+        await Promise.allSettled(pending);
+      }
+    } finally {
+      const left = (waiting.get(id) ?? 1) - 1;
+      if (left > 0) waiting.set(id, left);
+      else waiting.delete(id);
+    }
+  }
   function hold(sessionId: string, work: Promise<unknown>): void {
     const set = holds.get(sessionId) ?? new Set<Promise<unknown>>();
     holds.set(sessionId, set);
@@ -353,6 +384,33 @@ export function createSessionRunner(deps: {
     }
   }
 
+  /**
+   * Speech ignored where the leg asked it to start (an image from before resume): it would say the transcript again from
+   * 0. Retrying cannot help, so the leg is closed with no retry, and the video stays recovering and asks for a person,
+   * who updates speech and then stops and resumes it.
+   */
+  async function speechTooOld(v: Video, leg: LegState, startAt: number | undefined): Promise<void> {
+    if (!isCurrent(v, leg)) return;
+    leg.dead = true;
+    v.lastError = SPEECH_TOO_OLD;
+    leg.link?.close();
+    log.error({ sessionId: v.id, requested: leg.requested, startAt }, "speech ignored start_at; not retrying");
+    v.recoveringSince ??= now();
+    try {
+      await endLegRow(leg, "error");
+      if (v.done) return;
+      await sessions.setRecovering(db, v.id);
+      const session = await sessions.setAttention(db, v.id, SPEECH_TOO_OLD);
+      v.attention = SPEECH_TOO_OLD;
+      await publishUnlessStopped(v, session);
+    } catch (error) {
+      log.error({ sessionId: v.id, err: errorText(error) }, "recording a too-old speech failed");
+    } finally {
+      // No leg and no retry: the one state a video waits in for a person.
+      if (v.leg === leg) v.leg = null;
+    }
+  }
+
   /** Speech ended the leg because the source ended or speech stopped it: the video ends normally. */
   async function finish(v: Video, leg: LegState, reason: string): Promise<void> {
     leg.dead = true;
@@ -376,13 +434,23 @@ export function createSessionRunner(deps: {
     if (!isCurrent(v, leg)) return;
     switch (event.type) {
       case "session.started": {
+        const startAt = event.start_at;
+        if (leg.requested > 0 && (startAt === undefined || startAt < leg.requested - 1)) {
+          await speechTooOld(v, leg, startAt);
+          return;
+        }
+        const at = startAt ?? 0;
         // Each write re-checks the leg: a stop and an instant resume may land between them, and a replaced leg writes nothing.
-        if (leg.rowId !== null) await legs.started(db, leg.rowId, event.start_at);
+        if (leg.rowId !== null) await legs.started(db, leg.rowId, at);
+        if (!isCurrent(v, leg)) return;
+        // This leg covers everything from where it was asked to start: a gap recorded there before (a stop's) is its now.
+        await gaps.supersede(db, v.id, leg.requested);
         if (!isCurrent(v, leg)) return;
         // Speech started later than asked (a live edge without rewind): what lies between is not covered.
-        if (event.start_at > leg.requested + 1) await gaps.add(db, v.id, leg.requested, event.start_at);
+        if (at > leg.requested + 1) await gaps.add(db, v.id, leg.requested, at);
         if (!isCurrent(v, leg)) return;
-        leg.lastT = Math.max(leg.lastT, event.start_at);
+        if (typeof event.broadcast_start === "number") v.broadcastStart = event.broadcast_start;
+        leg.lastT = Math.max(leg.lastT, at);
         v.attempt = 0;
         v.recoveringSince = null;
         v.attention = null;
@@ -442,12 +510,16 @@ export function createSessionRunner(deps: {
       attention: null,
       done: false,
       first: null,
+      broadcastStart: null,
     };
     videos.set(id, v);
     return v;
   }
 
-  /** Feeds a video this process does not hold yet as a recovery: recovering first, then a leg; failures retry. */
+  /**
+   * Feeds a video this process does not hold yet as a recovery: recovering first, then a leg; failures retry. Resolves
+   * once the video is marked recovering; the leg opens in the background once the video is free (see `freed`).
+   */
   function revive(session: Session, since: number): Promise<Session> {
     const v = newVideo(session.id);
     v.recoveringSince = since;
@@ -461,11 +533,46 @@ export function createSessionRunner(deps: {
         // held without a leg or a retry.
         log.error({ sessionId: v.id, err: errorText(error) }, "marking a revived video recovering failed; opening its leg anyway");
       }
-      await holdsSettled(v.id);
-      await openLeg(v, { loud: false });
       return shown;
     })();
+    void v.first
+      .then(() => freed(v.id))
+      .then(() => openLeg(v, { loud: false }))
+      // Only a terminal error (the row gone, a refused config) gets here; openLeg already marked the video degraded.
+      .catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "opening a revived video's leg failed"));
     return v.first;
+  }
+
+  /** The unix seconds a previous leg of the video said its broadcast began, or null. */
+  async function storedBroadcastStart(id: string): Promise<number | null> {
+    const { rows } = await db.query<{ b: number | null }>(
+      `select (payload->>'broadcast_start')::float8 as b from events
+        where session_id = $1 and type = 'session.started' and jsonb_typeof(payload->'broadcast_start') = 'number'
+        order by seq desc limit 1`,
+      [id],
+    );
+    return rows[0]?.b ?? null;
+  }
+
+  /**
+   * A video stopped while recovering missed the stream from its resume point to now. On a live stream whose clock is
+   * known (a leg said when the broadcast began) that stretch is recorded as a gap, which the sweeper fills from the
+   * recording once the stream has ended. Without the clock, nothing is recorded and the video says so.
+   */
+  async function recordMissed(id: string, known: number | null): Promise<void> {
+    const t0 = await resumePoint(db, id);
+    const broadcastStart = known ?? (await storedBroadcastStart(id));
+    if (broadcastStart === null) {
+      const text = `stopped while recovering: the stream after ${Math.round(t0)} s is not recorded as a gap (its clock is unknown); resume to read it`;
+      log.warn({ sessionId: id, t0 }, "stopped while recovering with no stream clock; no gap recorded");
+      publishSession(await sessions.setAttention(db, id, text));
+      return;
+    }
+    const t1 = Math.floor((now() / 1000 - broadcastStart) * 2) / 2;
+    if (t1 <= t0 + 1) return;
+    // A gap an earlier stop recorded from the same point is this one's, shorter: one gap, never two over each other.
+    await gaps.supersede(db, id, t0);
+    await gaps.add(db, id, t0, t1);
   }
 
   return {
@@ -476,12 +583,13 @@ export function createSessionRunner(deps: {
       const existing = videos.get(sessionId);
       if (existing) return existing.first ?? session;
       const v = newVideo(sessionId);
-      v.first = holdsSettled(sessionId).then(() => openLeg(v, { loud: true })).then(() => session);
+      v.first = freed(sessionId).then(() => openLeg(v, { loud: true })).then(() => session);
       return v.first;
     },
     async stop(sessionId) {
       const v = videos.get(sessionId);
       let leg: LegState | null = null;
+      const missed = v !== undefined && v.recoveringSince !== null;
       if (v) {
         forget(v);
         leg = v.leg;
@@ -493,6 +601,13 @@ export function createSessionRunner(deps: {
       publishSession(session);
       leg?.link?.close();
       if (leg) await endLegRow(leg, "stopped");
+      if (missed) {
+        try {
+          await recordMissed(sessionId, v.broadcastStart);
+        } catch (error) {
+          log.error({ sessionId, err: errorText(error) }, "recording the stretch a stopped recovering video missed failed");
+        }
+      }
       return session;
     },
     async resume(sessionId) {
@@ -537,10 +652,13 @@ export function createSessionRunner(deps: {
     },
     live: () => [...videos.keys()],
     busy: () => [...new Set([...videos.keys(), ...flushing.keys(), ...holds.keys()])],
+    pending: () => [...new Set([...flushing.keys(), ...holds.keys()])],
+    wanted: (sessionId) => waiting.has(sessionId),
     hold,
     fillGap(sessionId, gap) {
       if (videos.has(sessionId) || gapLegs.has(sessionId) || gap.session_id !== sessionId) return Promise.resolve(false);
-      gapLegs.add(sessionId);
+      const abort = new AbortController();
+      gapLegs.set(sessionId, abort);
       const append = async (id: string, event: SpeechEvent) => {
         if (!seqs.has(id)) {
           const stored = await events.maxSeq(db, id);
@@ -550,13 +668,13 @@ export function createSessionRunner(deps: {
         seqs.set(id, seq);
         await events.append(db, id, seq, event.type, event);
       };
-      const work = runGapLeg({ db, hub, connect, append }, gap)
+      const work = runGapLeg({ db, hub, connect, append, signal: abort.signal }, gap)
         .catch((error: unknown) => {
           log.error({ sessionId, gapId: gap.id, err: errorText(error) }, "a gap leg failed");
           return false;
         })
         .finally(() => gapLegs.delete(sessionId));
-      // Held: a start or resume waits for it, so the video never has a main leg and a gap leg at once.
+      // Held: a start or resume closes it and waits for it to end, so the video never has a main leg and a gap leg at once.
       hold(sessionId, work);
       return work;
     },

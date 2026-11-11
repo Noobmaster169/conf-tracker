@@ -23,8 +23,11 @@ const log = childLogger({ module: "extractor" });
 const SEGMENT_MARGIN_S = 30;
 
 export interface Extractor extends Loop {
-  /** Extracts window after window from the cursor, one call at a time on the loop's queue: true once no window is left, false at the first call that fails (the cursor stays). */
-  drain(): Promise<boolean>;
+  /**
+   * Extracts window after window from the cursor, one call at a time on the loop's queue: true once no window is left,
+   * false at the first call that fails (the cursor stays) or once `proceed` (asked before each window) says to yield.
+   */
+  drain(proceed?: () => boolean): Promise<boolean>;
 }
 /** Kept as a name so phase 3 imports still read naturally. */
 export type ExtractorFactory = LoopFactory;
@@ -90,12 +93,12 @@ export function createExtractor(deps: ExtractorDeps): Extractor {
     startAfter: deps.resumeAt ?? 0,
   });
 
-  async function drain(): Promise<boolean> {
+  async function drain(proceed?: () => boolean): Promise<boolean> {
     let done = false;
     // One job on the loop's queue, so no tick's call runs alongside the drain's.
     await loop.enqueue(async (live) => {
       for (;;) {
-        if (!live()) return;
+        if (!live() || (proceed && !proceed())) return;
         const outcome = await attempt(Number.POSITIVE_INFINITY);
         if (outcome === "failed") return;
         if (outcome === "none") {

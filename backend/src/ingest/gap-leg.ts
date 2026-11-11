@@ -24,6 +24,8 @@ export interface GapLegDeps {
   append(sessionId: string, event: SpeechEvent): Promise<void>;
   /** How long the leg may run before it counts as failed; by default twice the gap plus ten minutes. */
   timeoutMs?: number;
+  /** Aborted when the video is wanted back (a resume): the leg closes at once as not filled, reason `preempted`. */
+  signal?: AbortSignal;
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -87,9 +89,10 @@ export async function runGapLeg(deps: GapLegDeps, gap: Gap): Promise<boolean> {
       if (over) return;
       switch (event.type) {
         case "session.started":
-          startAt = event.start_at;
-          lastT = Math.max(lastT, event.start_at);
-          await legs.started(db, row.id, event.start_at);
+          // A speech image that omits start_at cannot say it read from t0: the stretch is not filled.
+          startAt = event.start_at ?? null;
+          lastT = Math.max(lastT, event.start_at ?? gap.t0);
+          if (event.start_at !== undefined) await legs.started(db, row.id, event.start_at);
           return;
         case "asr.segment": {
           const words = tracker.assign(event.words);
@@ -127,6 +130,12 @@ export async function runGapLeg(deps: GapLegDeps, gap: Gap): Promise<boolean> {
   const timeoutMs = deps.timeoutMs ?? (gap.t1 - gap.t0) * 2000 + 10 * 60 * 1000;
   timer = setTimeout(() => void finish("timeout", false), timeoutMs);
   timer.unref?.();
+  const preempt = () => void finish("preempted", false);
+  if (deps.signal?.aborted) {
+    await finish("preempted", false);
+    return outcome;
+  }
+  deps.signal?.addEventListener("abort", preempt, { once: true });
   try {
     link = await connect(
       {

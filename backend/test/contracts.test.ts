@@ -95,7 +95,8 @@ test("a proposal parses, and the snapshot needs the session cost", () => {
 
 test("session.started and health parse without the resume fields", () => {
   const started = SpeechEvent.parse({ type: "session.started", session_id: "s", started_at: "2026-11-12T00:00:00.000Z", source: {}, models: {}, config: {} });
-  expect(started.type === "session.started" && [started.start_at, started.broadcast_start]).toEqual([0, null]);
+  // start_at stays missing, so the runner can tell a speech that ignores where to start from one that started at 0.
+  expect(started.type === "session.started" && [started.start_at, started.broadcast_start]).toEqual([undefined, null]);
   const health = SpeechEvent.parse({ type: "health", t: 1, lag_s: 0, gpu_ms_asr: 0, buffer_s: 0 });
   expect(health.type === "health" && health.behind_s).toBeNull();
   const withBehind = SpeechEvent.parse({ type: "health", t: 1, lag_s: 0, gpu_ms_asr: 0, buffer_s: 0, behind_s: 12.5 });

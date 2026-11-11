@@ -19,9 +19,11 @@ afterAll(closePool);
 
 const URL = "https://www.youtube.com/watch?v=QB5BNdBFujE";
 const NO_CLAIMS = JSON.stringify({ claims: [] });
-const runnerOf = (busy: string[] = []): SessionRunner => ({
+/** `busy`: live or settling; `pending`: settling only (a final loop run or a hold), a subset of busy. */
+const runnerOf = (busy: string[] = [], pending: string[] = [], wanted: (id: string) => boolean = () => false): SessionRunner => ({
   start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")),
-  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => busy, hold: () => {}, fillGap: () => Promise.resolve(false),
+  resumeAll: () => Promise.resolve([]), live: () => busy, busy: () => [...new Set([...busy, ...pending])], hold: () => {}, fillGap: () => Promise.resolve(false),
+  pending: () => pending, wanted,
 });
 const say = (db: Parameters<typeof segments.insert>[0], sessionId: string, t0: number) =>
   segments.insert(db, sessionId, { t0, t1: t0 + 5, text: `w${t0}`, words: [{ w: `w${t0}`, t0, t1: t0 + 1, p: 1, speaker_id: "S1" }] });
@@ -90,19 +92,23 @@ test("a video that does not extract, or is older than a week, is skipped", async
   });
 });
 
-test("a closed talk without a summary gets one; a talk with one is left alone; a busy video's talk waits", async () => {
+test("a closed talk without a summary gets one, a live video's included; a talk with one is left alone; a settling video's talk waits", async () => {
   await inRollback(async (tx) => {
     const stage = await stages.create(tx, { conference: "Summit", name: "Main", day: "2026-10-06", description: "" });
     const mk = (title: string) => talks.create(tx, stage.id, { title, description: "", kind: "talk", starts_at: null, ends_at: null, speakers: [] });
     const [a, b, c] = [await mk("A"), await mk("B"), await mk("C")];
     const s = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: { extract: false } });
     const busy = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: { extract: false } });
+    const live = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: { extract: false } });
     const span = (sid: string, talkId: number, t: number) => spans.switchTo(tx, sid, { talkId, state: "talk", t, confidence: 0.9, quote: null, source: "tracker", callId: null });
     await span(s.id, a.id, 0);
     await span(s.id, b.id, 100);
     await span(s.id, c.id, 200); // c is still running, not closed
     await span(busy.id, a.id, 0);
     await spans.close(tx, busy.id, 50);
+    // A live video's first talk ended (the next began): its summary need not wait for the video to stop.
+    await span(live.id, a.id, 0);
+    await span(live.id, c.id, 60);
     await spans.close(tx, s.id, 300).then(() => undefined);
     // Re-open c: only a and b are closed talks for this video.
     await tx.query(`update talk_spans set t1 = null where session_id = $1 and talk_id = $2`, [s.id, c.id]);
@@ -114,8 +120,8 @@ test("a closed talk without a summary gets one; a talk with one is left alone; a
 
     const asked: [string, number][] = [];
     const summarize = async (sessionId: string, talkId: number) => { asked.push([sessionId, talkId]); return null; };
-    const report = await createSweeper({ db: tx, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize, runner: runnerOf([busy.id]) }).sweep();
-    expect(asked.filter(([sid]) => sid === s.id || sid === busy.id)).toEqual([[s.id, a.id]]);
+    const report = await createSweeper({ db: tx, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize, runner: runnerOf([live.id], [busy.id]) }).sweep();
+    expect(asked.filter(([sid]) => sid === s.id || sid === busy.id || sid === live.id).sort()).toEqual([[s.id, a.id], [live.id, a.id]].sort());
     expect(report.summarised).not.toContain(b.id);
   });
 });
@@ -174,5 +180,16 @@ test("a summary that failed is asked again at most once an hour, and never after
     for (let i = 0; i < 4; i++) await failed();
     await sweep(500);
     expect(asked).toBe(1);
+  });
+});
+
+test("a sweep's drain of a backlog yields before its next window while the runner wants the video back", async () => {
+  await inRollback(async (tx) => {
+    const s = await backlog(tx);
+    const llm = fakeLlm(NO_CLAIMS);
+    // Wanted from the first window on (a resume waiting since the drain began): not one window is asked.
+    const report = await createSweeper({ db: tx, hub: createHub(10), llm: llm.client, summarize: noSummary, runner: runnerOf([], [], (id) => id === s.id) }).sweep();
+    expect(report.extracted).not.toContain(s.id);
+    expect(await answered(tx, s.id)).toBe(0);
   });
 });

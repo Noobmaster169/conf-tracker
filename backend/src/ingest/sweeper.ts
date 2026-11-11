@@ -82,7 +82,8 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
           const extractor = factory({ db, hub, sessionId: id, config: { ...config, ...(deps.config ?? {}) }, resumeAt: before }) as Extractor | null;
           if (!extractor) return;
           try {
-            await extractor.drain();
+            // Yields at the next window once a start or resume of the video waits for this drain.
+            await extractor.drain(() => !runner.wanted(id));
           } finally {
             extractor.stop();
           }
@@ -122,7 +123,9 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
 
   async function summariseTalks(report: SweepReport): Promise<void> {
     for (const { sessionId, talkId } of await spans.unsummarised(db, SCAN_DAYS)) {
-      if (runner.busy().includes(sessionId)) continue;
+      // A closed talk of a live video is summarised now, not once the video stops: the summary allowance already limits
+      // how often. Only a video something else is settling on (a final loop run, a hold) waits.
+      if (runner.pending().includes(sessionId)) continue;
       const work = (async () => {
         try {
           if (!(await summaryAllowed(db, sessionId, talkId, now()))) return;

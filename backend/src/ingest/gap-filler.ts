@@ -76,6 +76,8 @@ export function createGapFiller(deps: GapFillerDeps): GapFiller {
         await gaps.setStage(db, gap.id, "transcribed");
         return;
       }
+      // Closed by a start or resume of the video (it is no longer stopped): not a failed try, so no back-off later.
+      if ((await sessions.get(db, gap.session_id))?.status !== "stopped") return;
       await gaps.tried(db, gap.id, new Date(now()));
       const fresh = await gaps.get(db, gap.id);
       if (fresh?.since && Date.parse(fresh.since) <= now() - GIVE_UP_MS) {

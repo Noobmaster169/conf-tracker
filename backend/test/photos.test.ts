@@ -11,7 +11,7 @@ import { inRollback } from "./db";
 afterAll(closePool);
 
 const auth = { authorization: "Bearer test-key" };
-const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => [], busy: () => [], hold: () => {}, fillGap: () => Promise.resolve(false) };
+const noRunner: SessionRunner = { start: () => Promise.reject(new Error("not used")), stop: () => Promise.reject(new Error("not used")), resume: () => Promise.reject(new Error("not used")), resumeAll: () => Promise.resolve([]), live: () => [], busy: () => [], hold: () => {}, fillGap: () => Promise.resolve(false), pending: () => [], wanted: () => false };
 
 test("a stored photo replaces the link, is served back byte for byte, and survives an edit that sends its path", async () => {
   await inRollback(async (tx) => {

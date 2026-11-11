@@ -462,6 +462,12 @@ async function until(cond: () => boolean | Promise<boolean>, what: string): Prom
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/** The ith connection to a scripted speech, once it was made: a resume opens its leg in the background. */
+async function conn(speech: { connections: unknown[] }, i: number) {
+  await until(() => speech.connections.length > i, `connection ${i + 1}`);
+  return (speech as ReturnType<typeof scriptedSpeech>).connections[i]!;
+}
+
 /** Lets queued handlers and their queries finish (the rollback client answers in well under this). */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -491,9 +497,9 @@ test("a dropped leg reopens from the resume point on the same video, with start_
     const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry");
     expect((await sessions.get(tx, created.id))?.status).toBe("recovering");
     expect(clock.delays()).toEqual([5]);
@@ -501,7 +507,7 @@ test("a dropped leg reopens from the resume point on the same video, with start_
 
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
 
     expect(speech.starts[1]).toMatchObject({ session_id: created.id, url: URL, start_at: 3, speaker_floor: 1, max_speed: 3 });
     expect((await segments.list(tx, created.id, {})).map((s) => s.t0)).toEqual([0, 1.5, 3.5, 5.5]);
@@ -537,7 +543,7 @@ test("a refused start (already running) is retried with backoff and the third at
     await until(() => clock.pending() === 1 && speech.connections.length === 2, "the second retry");
     clock.fireNext();
     await until(() => speech.connections.length === 3, "the third attempt");
-    await speech.connections[2]!.done;
+    await (await conn(speech, 2)).done;
 
     expect(clock.delays()).toEqual([5, 10]);
     expect(speech.starts).toHaveLength(3);
@@ -546,7 +552,7 @@ test("a refused start (already running) is retried with backoff and the third at
     expect(clock.pending()).toBe(0);
 
     // A started leg resets the backoff.
-    await speech.connections[2]!.drop("socket reset");
+    await (await conn(speech, 2)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry after the reset");
     expect(clock.delays()).toEqual([5, 10, 5]);
     await runner.stop(created.id);
@@ -575,7 +581,7 @@ test("after 15 minutes recovering the video shows attention and still retries; a
 
     clock.fireNext();
     await until(() => speech.connections.length === 3, "the third attempt");
-    await speech.connections[2]!.done;
+    await (await conn(speech, 2)).done;
     const back = await sessions.get(tx, created.id);
     expect(back?.status).toBe("live");
     expect(back?.attention).toBeNull();
@@ -591,8 +597,8 @@ test("stop during a scheduled retry: nothing opens afterwards and the video is s
     const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry");
 
     await runner.stop(created.id);
@@ -622,7 +628,7 @@ test("stop while a leg is still opening: the late link is closed and the video s
     await runner.stop(created.id);
     open();
     await resuming;
-    await speech.connections[0]!.closed;
+    await (await conn(speech, 0)).closed;
     await settle();
 
     expect((await sessions.get(tx, created.id))?.status).toBe("stopped");
@@ -643,7 +649,7 @@ test("a leg that starts later than asked records a gap from the resume point to 
     await sessions.setStatus(tx, created.id, "degraded");
 
     await runner.resume(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     expect(speech.starts[0]).toMatchObject({ start_at: 10 });
     expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[10, 42]]);
@@ -664,7 +670,7 @@ test("start_at past the end: source_ended with no segments stops the video, no r
     await sessions.setStatus(tx, created.id, "stopped");
 
     await runner.resume(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
     await settle();
 
     expect((await sessions.get(tx, created.id))?.status).toBe("stopped");
@@ -685,12 +691,12 @@ test("the loops are not recreated when a leg reopens: one extractor across legs"
     const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, loops: [extractors.factory], now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry");
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     await runner.stop(created.id);
     await settle();
 
@@ -709,18 +715,18 @@ test("concurrent resumes open one leg, and a close from a leg that is no longer 
     await sessions.setStatus(tx, created.id, "degraded");
 
     await Promise.all([runner.resume(created.id), runner.resume(created.id)]);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
     expect(speech.starts).toHaveLength(1);
 
-    await speech.connections[0]!.emit(endedWith("error", "boom"));
+    await (await conn(speech, 0)).emit(endedWith("error", "boom"));
     await until(() => clock.pending() === 1, "a retry");
     // The old socket then closes: still one retry, not two.
-    await speech.connections[0]!.drop("close 1006");
+    await (await conn(speech, 0)).drop("close 1006");
     await settle();
     expect(clock.pending()).toBe(1);
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
     await runner.stop(created.id);
   });
@@ -774,6 +780,8 @@ test("resumeAll revives videos concurrently: a connect that never answers does n
     void runner.resumeAll();
     await until(() => speech.connections.length === 1, "the second video's leg opens while the first connect hangs");
     expect(calls).toBe(2);
+    // Its events are handled before the rollback, so nothing writes to a row that is gone.
+    await (await conn(speech, 0)).done;
   });
 });
 
@@ -804,14 +812,14 @@ test("a database error while marking the video recovering still schedules the re
     const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     failRecovering = true;
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry despite the failed write");
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
     await runner.stop(created.id);
   });
@@ -832,8 +840,8 @@ test("a database error while reopening a leg is one more failed attempt, not a d
     const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry");
 
     failResume = true;
@@ -843,7 +851,7 @@ test("a database error while reopening a leg is one more failed attempt, not a d
     expect((await sessions.get(tx, created.id))?.status).toBe("recovering");
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
     await runner.stop(created.id);
   });
@@ -860,15 +868,15 @@ test("a voice heard in two legs keeps its talk time, and the video keeps its fir
     const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
     const first = (await speakersRepo.get(tx, created.id, "S1"))!.talk_s;
     expect(first).toBe(10);
 
-    await speech.connections[0]!.drop("socket reset");
+    await (await conn(speech, 0)).drop("socket reset");
     await until(() => clock.pending() === 1, "a retry");
     clock.fireNext();
     await until(() => speech.connections.length === 2, "the second leg");
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
 
     expect(speech.starts[1]?.start_at).toBe(10);
     expect((await speakersRepo.get(tx, created.id, "S1"))!.talk_s).toBe(15);
@@ -894,14 +902,14 @@ test("stop then an instant resume: the old leg's handler still in flight writes 
     const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     hold = new Promise<void>((resolve) => (release = resolve));
-    const late = speech.connections[0]!.emit(seg(0, 4, "late"));
+    const late = (await conn(speech, 0)).emit(seg(0, 4, "late"));
     await settle();
     await runner.stop(created.id);
     await runner.resume(created.id);
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     release();
     await late;
     await settle();
@@ -924,7 +932,7 @@ test("resumeAll ends the leg rows a previous process left open", async () => {
     await legs.started(tx, orphan.id, 0);
 
     await runner.resumeAll();
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     expect((await legRows(tx, created.id)).map((l) => l.end_reason)).toEqual(["api restarted", null]);
     await runner.stop(created.id);
@@ -955,7 +963,7 @@ test("a database error reading the event numbering during resumeAll is retried, 
     await until(() => clock.pending() === 1, "a retry after the failed read");
     clock.fireNext();
     await until(() => speech.connections.length === 1, "the leg");
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     expect((await events.list(tx, created.id)).map((e) => e.seq)).toEqual([1, 2, 3, 4, 5]);
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
@@ -991,14 +999,14 @@ test.each([
     const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     armed = true;
-    const old = kind === "markStarted" ? speech.connections[0]!.emit(started) : speech.connections[0]!.drop("socket reset");
+    const old = kind === "markStarted" ? (await conn(speech, 0)).emit(started) : (await conn(speech, 0)).drop("socket reset");
     await until(() => landed, "the old write");
     await runner.stop(created.id);
     await runner.resume(created.id);
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
     release();
     await old;
@@ -1029,7 +1037,7 @@ test("a revive whose first write fails still opens a leg", async () => {
 
     await runner.resume(created.id);
     await until(() => speech.connections.length === 1, "the leg");
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
     expect((await sessions.get(tx, created.id))?.status).toBe("live");
     expect(runner.live()).toEqual([created.id]);
     await runner.stop(created.id);
@@ -1058,14 +1066,14 @@ test("a replaced leg's session.started, held across a stop and an instant resume
     const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
     const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
     await runner.start(created.id);
-    await speech.connections[0]!.done;
+    await (await conn(speech, 0)).done;
 
     hold = new Promise<void>((resolve) => (release = resolve));
-    const old = speech.connections[0]!.emit(startedAt(5));
+    const old = (await conn(speech, 0)).emit(startedAt(5));
     await until(() => reached, "the old leg's started write");
     await runner.stop(created.id);
     await runner.resume(created.id);
-    await speech.connections[1]!.done;
+    await (await conn(speech, 1)).done;
     release();
     await old;
     await settle();
@@ -1118,5 +1126,183 @@ test("a resume while a sweep holds the video opens its leg only after the held w
     await speech.done;
     expect(runner.live()).toEqual([created.id]);
     expect(runner.busy()).toEqual([created.id]);
+  });
+});
+
+// --- Final review fixes ----------------------------------------------------------------------------------------------
+
+const TOO_OLD = "speech service too old to resume (update yt-stream speech)";
+const { start_at: _ignored, ...startedWithoutStartAt } = started as Extract<SpeechEvent, { type: "session.started" }>;
+
+test.each([
+  ["omits start_at", startedWithoutStartAt as SpeechEvent],
+  ["starts from 0 anyway", startedAt(0)],
+])("a resume leg on a speech that %s is closed, not retried, and asks for a person", async (_name, first) => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [first, seg(0, 1.2, "again")] }]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await segments.insert(tx, created.id, { t0: 0, t1: 10, text: "before", words: [{ w: "before", t0: 0, t1: 10, p: 0.9, speaker_id: null }] });
+    await sessions.setStatus(tx, created.id, "degraded");
+
+    await runner.resume(created.id);
+    await until(() => speech.connections.length === 1, "the leg");
+    await (await conn(speech, 0)).done;
+    await settle();
+
+    const row = await sessions.get(tx, created.id);
+    expect(row?.status).toBe("recovering");
+    expect(row?.attention).toBe(TOO_OLD);
+    expect(clock.pending()).toBe(0);
+    expect((await conn(speech, 0)).isClosed()).toBe(true);
+    expect((await segments.list(tx, created.id, {})).map((s) => s.text)).toEqual(["before"]);
+    expect(await legRows(tx, created.id)).toEqual([{ requested_t: 10, start_t: null, end_reason: "error" }]);
+    await runner.stop(created.id);
+  });
+});
+
+test("a first leg from 0 on a speech that omits start_at still runs", async () => {
+  await inRollback(async (tx) => {
+    const speech = scriptedSpeech([{ events: [startedWithoutStartAt as SpeechEvent, seg(0, 1.2)] }]);
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    expect(await segments.list(tx, created.id, {})).toHaveLength(1);
+    await runner.stop(created.id);
+  });
+});
+
+test("stop then an instant resume: the new leg and its extractor wait for the old extractor's final drain", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const speech = scriptedSpeech([{ events: [started] }, { events: [started] }]);
+    let finish!: () => void;
+    let built = 0;
+    const slow: ExtractorFactory = () => {
+      built += 1;
+      return {
+        tick: async () => {}, advance: () => {}, cancelQueued: () => {}, stop: () => {}, drain: async () => true,
+        flush: built === 1 ? () => new Promise<void>((resolve) => (finish = resolve)) : async () => {},
+      } as Extractor;
+    };
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, loops: [slow] });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await runner.stop(created.id);
+    await runner.resume(created.id);
+    await settle();
+    expect(speech.connections).toHaveLength(1);
+    expect(built).toBe(1);
+    finish();
+    await until(() => speech.connections.length === 2, "the resumed leg");
+    expect(built).toBe(2);
+    await runner.stop(created.id);
+  });
+});
+
+test("a resume answers once the video is marked recovering, while a hold is still pending; the leg opens after it", async () => {
+  await inRollback(async (tx) => {
+    const speech = fakeSpeech([started], { closeAfter: false });
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await sessions.setStatus(tx, created.id, "stopped");
+    let finish!: () => void;
+    runner.hold(created.id, new Promise<void>((resolve) => (finish = resolve)));
+    const answered = await runner.resume(created.id);
+    expect(answered.status).toBe("recovering");
+    expect(runner.wanted(created.id)).toBe(true);
+    expect(speech.starts).toHaveLength(0);
+    finish();
+    await speech.done;
+    expect(runner.wanted(created.id)).toBe(false);
+    expect(runner.live()).toEqual([created.id]);
+    await runner.stop(created.id);
+  });
+});
+
+test("a resume closes a gap leg in flight instead of waiting for it, and the gap keeps its stage", async () => {
+  await inRollback(async (tx) => {
+    const speech = scriptedSpeech([{ events: [startedAt(400), seg(400, 405)] }, { events: [startedAt(405)] }]);
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await segments.insert(tx, created.id, { t0: 0, t1: 10, text: "before", words: [{ w: "before", t0: 0, t1: 10, p: 0.9, speaker_id: null }] });
+    await sessions.setStatus(tx, created.id, "stopped");
+    const gap = await gaps.add(tx, created.id, 400, 600);
+    const filling = runner.fillGap(created.id, gap);
+    await (await conn(speech, 0)).done;
+
+    await runner.resume(created.id);
+    expect(await filling).toBe(false);
+    expect((await conn(speech, 0)).isClosed()).toBe(true);
+    await until(() => speech.connections.length === 2, "the resumed leg");
+    await (await conn(speech, 1)).done;
+    expect((await gaps.get(tx, gap.id))?.stage).toBeNull();
+    const kinds = (await tx.query("select kind, end_reason from session_legs where session_id = $1 order by id", [created.id])).rows;
+    expect(kinds).toEqual([{ kind: "gap", end_reason: "preempted" }, { kind: "main", end_reason: null }]);
+    await runner.stop(created.id);
+  });
+});
+
+const startedOn = (start_at: number, broadcast_start: number | null): SpeechEvent => ({ ...started, start_at, broadcast_start } as SpeechEvent);
+
+test("stopping a recovering video records the stretch it missed as a gap, and a later leg that covers it supersedes it", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const broadcast = clock.now() / 1000 - 100;
+    const speech = scriptedSpeech([{ events: [startedOn(0, broadcast), seg(0, 10)] }, { events: [startedOn(10, broadcast)] }]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry");
+    clock.advance(60_000);
+
+    await runner.stop(created.id);
+    expect((await gaps.open(tx, created.id)).map((g) => [g.t0, g.t1])).toEqual([[10, 160]]);
+
+    await runner.resume(created.id);
+    await until(() => speech.connections.length === 2, "the resumed leg");
+    await (await conn(speech, 1)).done;
+    await settle();
+    expect(await gaps.open(tx, created.id)).toEqual([]);
+    await runner.stop(created.id);
+  });
+});
+
+test("stopping a recovering video whose stream clock is unknown records no gap and says so", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [started, seg(0, 10)] }]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await (await conn(speech, 0)).drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry");
+
+    await runner.stop(created.id);
+    expect(await gaps.open(tx, created.id)).toEqual([]);
+    expect((await sessions.get(tx, created.id))?.attention).toMatch(/not recorded as a gap/);
+  });
+});
+
+test("stopping a live video records no gap", async () => {
+  await inRollback(async (tx) => {
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [startedOn(0, clock.now() / 1000 - 100), seg(0, 10)] }]);
+    const runner = createSessionRunner({ db: tx, hub: createHub(100), connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await (await conn(speech, 0)).done;
+    await runner.stop(created.id);
+    expect(await gaps.open(tx, created.id)).toEqual([]);
   });
 });
