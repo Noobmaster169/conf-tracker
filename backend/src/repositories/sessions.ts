@@ -72,9 +72,10 @@ export async function list(db: Queryable): Promise<Session[]> {
   return rows.map(toSession);
 }
 
+/** Live again. started_at keeps the video's first start: a reopened leg does not move it. */
 export async function markStarted(db: Queryable, id: string, input: { startedAt: string; models: Record<string, string> }): Promise<Session> {
   const { rows } = await db.query<Row>(
-    `update sessions set status = 'live', started_at = $2, models = $3, attention = null, recovering_since = null where id = $1 returning ${COLUMNS}`,
+    `update sessions set status = 'live', started_at = coalesce(started_at, $2), models = $3, attention = null, recovering_since = null where id = $1 returning ${COLUMNS}`,
     [id, input.startedAt, JSON.stringify(input.models)],
   );
   return toFoundSession(id, rows[0]);

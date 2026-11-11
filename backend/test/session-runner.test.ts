@@ -1,8 +1,8 @@
-import type { PoolClient } from "pg";
+import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { afterAll, expect, test } from "vitest";
 
 import type { LiveEvent, SpeechEvent } from "../src/contracts";
-import { closePool } from "../src/db";
+import { closePool, type Queryable } from "../src/db";
 import { fakeSpeech, scriptedSpeech } from "../src/ingest/__fakes__/fake-speech";
 import type { Extractor, ExtractorFactory } from "../src/ingest/extractor";
 import { createLoop } from "../src/ingest/loop";
@@ -748,5 +748,159 @@ test("resume refuses a video that is not degraded or stopped; resumeAll picks up
     expect(runner.live().sort()).toEqual([live.id, recovering.id].sort());
     await runner.stop(live.id);
     await runner.stop(recovering.id);
+  });
+});
+
+// --- Fix round 1 ---------------------------------------------------------------------------------------------------
+
+/** The rollback client, with a hook that may fail or hold a query before it reaches Postgres. */
+function hookedDb(tx: PoolClient, hook: (text: string) => Promise<void> | void): Queryable {
+  return {
+    query: async <R extends QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>> => {
+      await hook(text);
+      return tx.query<R>(text, values);
+    },
+  };
+}
+
+test("a database error while marking the video recovering still schedules the retry, and the next leg opens", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let failRecovering = false;
+    const db = hookedDb(tx, (text) => {
+      if (failRecovering && text.includes("status = 'recovering'")) {
+        failRecovering = false;
+        throw new Error("connection reset by peer");
+      }
+    });
+    const speech = scriptedSpeech([{ events: [started] }, { events: [started] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+
+    failRecovering = true;
+    await speech.connections[0]!.drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry despite the failed write");
+    clock.fireNext();
+    await until(() => speech.connections.length === 2, "the second leg");
+    await speech.connections[1]!.done;
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    await runner.stop(created.id);
+  });
+});
+
+test("a database error while reopening a leg is one more failed attempt, not a degraded video", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let failResume = false;
+    const db = hookedDb(tx, (text) => {
+      if (failResume && text.includes("from diar_windows where session_id = $1) as win")) {
+        failResume = false;
+        throw new Error("too many connections");
+      }
+    });
+    const speech = scriptedSpeech([{ events: [started] }, { events: [started] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+    await speech.connections[0]!.drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry");
+
+    failResume = true;
+    clock.fireNext();
+    await until(() => clock.pending() === 1 && clock.delays().length === 2, "a second retry");
+    expect(clock.delays()).toEqual([5, 10]);
+    expect((await sessions.get(tx, created.id))?.status).toBe("recovering");
+    clock.fireNext();
+    await until(() => speech.connections.length === 2, "the second leg");
+    await speech.connections[1]!.done;
+    expect((await sessions.get(tx, created.id))?.status).toBe("live");
+    await runner.stop(created.id);
+  });
+});
+
+test("a voice heard in two legs keeps its talk time, and the video keeps its first start time", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const speech = scriptedSpeech([
+      { events: [started, { type: "speaker.new", speaker_id: "S1", first_seen_t: 0 }, seg(0, 10), diar(0, 10, [[0, 10, "S1"]], ["S1"])] },
+      { events: [{ ...startedAt(10), started_at: "2026-09-23T11:00:00.000Z" } as SpeechEvent, seg(10.5, 15), diar(10, 15, [[10, 15, "S1"]], ["S1"])] },
+    ]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+    const first = (await speakersRepo.get(tx, created.id, "S1"))!.talk_s;
+    expect(first).toBe(10);
+
+    await speech.connections[0]!.drop("socket reset");
+    await until(() => clock.pending() === 1, "a retry");
+    clock.fireNext();
+    await until(() => speech.connections.length === 2, "the second leg");
+    await speech.connections[1]!.done;
+
+    expect(speech.starts[1]?.start_at).toBe(10);
+    expect((await speakersRepo.get(tx, created.id, "S1"))!.talk_s).toBe(15);
+    expect((await sessions.get(tx, created.id))?.started_at).toBe(started.type === "session.started" ? started.started_at : "");
+    await runner.stop(created.id);
+  });
+});
+
+test("stop then an instant resume: the old leg's handler still in flight writes nothing after the new leg's cut", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    let hold: Promise<void> | null = null;
+    let release!: () => void;
+    const db = hookedDb(tx, async (text) => {
+      if (hold && text.startsWith("insert into events")) {
+        const wait = hold;
+        hold = null;
+        await wait;
+      }
+    });
+    const speech = scriptedSpeech([{ events: [started] }, { events: [startedAt(0)] }]);
+    const runner = createSessionRunner({ db, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await runner.start(created.id);
+    await speech.connections[0]!.done;
+
+    hold = new Promise<void>((resolve) => (release = resolve));
+    const late = speech.connections[0]!.emit(seg(0, 4, "late"));
+    await settle();
+    await runner.stop(created.id);
+    await runner.resume(created.id);
+    await speech.connections[1]!.done;
+    release();
+    await late;
+    await settle();
+
+    expect(await segments.list(tx, created.id, {})).toEqual([]);
+    await runner.stop(created.id);
+  });
+});
+
+test("resumeAll ends the leg rows a previous process left open", async () => {
+  await inRollback(async (tx) => {
+    const hub = createHub(100);
+    const clock = fakeClock();
+    const speech = scriptedSpeech([{ events: [started] }]);
+    const runner = createSessionRunner({ db: tx, hub, connect: speech.connector, now: clock.now, setTimer: clock.setTimer });
+    const created = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    await tx.query("update sessions set status = 'stopped' where status in ('starting', 'live', 'recovering') and id <> $1", [created.id]);
+    await sessions.markStarted(tx, created.id, { startedAt: "2026-11-16T09:00:00.000Z", models: {} });
+    const orphan = await legs.open(tx, created.id, { speechId: created.id, kind: "main", requestedT: 0 });
+    await legs.started(tx, orphan.id, 0);
+
+    await runner.resumeAll();
+    await speech.connections[0]!.done;
+
+    expect((await legRows(tx, created.id)).map((l) => l.end_reason)).toEqual(["api restarted", null]);
+    await runner.stop(created.id);
   });
 });

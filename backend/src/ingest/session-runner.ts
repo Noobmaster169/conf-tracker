@@ -9,6 +9,7 @@ import * as legs from "../repositories/legs";
 import { resumePoint, speakerFloor, truncateAfter } from "../repositories/resume";
 import * as segments from "../repositories/segments";
 import * as sessions from "../repositories/sessions";
+import * as speakers from "../repositories/speakers";
 import type { Loop, LoopFactory } from "./loop";
 import { createSpeakerTracker, type SpeakerTracker } from "./speaker-tracker";
 import type { SpeechConnector, SpeechLink } from "./speech-client";
@@ -52,7 +53,6 @@ interface LegState {
 interface Video {
   id: string;
   loops: Loop[] | null;
-  seq: number;
   leg: LegState | null;
   retry: Cancel | null;
   attempt: number;
@@ -85,6 +85,9 @@ export function createSessionRunner(deps: {
       return () => clearTimeout(handle);
     });
   const videos = new Map<string, Video>();
+  // Event numbering outlives a Video: after a stop and an instant resume, the old leg's append may still be in flight
+  // with a number the database does not show yet, so the new Video continues after it instead of reusing it.
+  const seqs = new Map<string, number>();
 
   const publishSession = (session: Session) => hub.publish(session.id, { type: "session", data: session });
 
@@ -155,7 +158,8 @@ export function createSessionRunner(deps: {
       requested: 0,
       lastT: 0,
       link: null,
-      tracker: createSpeakerTracker({ db, hub, sessionId: v.id }),
+      // Its writes stop as soon as the leg is no longer the video's.
+      tracker: createSpeakerTracker({ db, hub, sessionId: v.id, live: () => isCurrent(v, leg) }),
       dead: false,
     };
     v.leg = leg;
@@ -163,9 +167,14 @@ export function createSessionRunner(deps: {
 
     let session: Session;
     let r: number;
+    // Set for a missing row or a refused config: retrying cannot fix either. Any other error here is a database read.
+    let terminal = false;
     try {
       const found = await sessions.get(db, v.id);
-      if (!found) throw new TerminalError(`session ${v.id} not found`);
+      if (!found) {
+        terminal = true;
+        throw new TerminalError(`session ${v.id} not found`);
+      }
       session = found;
       if (gone()) return;
       r = await resumePoint(db, v.id);
@@ -174,15 +183,24 @@ export function createSessionRunner(deps: {
         // Built once per video, before its first socket: a bad config or a missing prompt version fails with nothing
         // to clean up, and a reopened leg keeps the same loops (and their queues). Numbering continues from storage.
         const resumeAt = r;
-        v.loops = factories
-          .map((factory) => factory({ db, hub, sessionId: v.id, config: found.config, resumeAt }))
-          .filter((loop): loop is Loop => loop !== null);
-        v.seq = await events.maxSeq(db, v.id);
+        try {
+          v.loops = factories
+            .map((factory) => factory({ db, hub, sessionId: v.id, config: found.config, resumeAt }))
+            .filter((loop): loop is Loop => loop !== null);
+        } catch (error) {
+          terminal = true;
+          throw error;
+        }
+        const stored = await events.maxSeq(db, v.id);
+        seqs.set(v.id, Math.max(stored, seqs.get(v.id) ?? 0));
         if (gone()) return;
       }
     } catch (error) {
       if (gone()) return;
-      // Not a leg failure: retrying cannot fix a missing row or a refused config.
+      if (!terminal && !opts.loud) {
+        await legFailed(v, leg, errorText(error));
+        return;
+      }
       leg.dead = true;
       forget(v);
       v.leg = null;
@@ -195,6 +213,9 @@ export function createSessionRunner(deps: {
       await truncateAfter(db, v.id, r);
       if (gone()) return;
       const floor = await speakerFloor(db, v.id);
+      if (gone()) return;
+      // A voice's talk time so far: the new leg's diarization adds to it instead of starting it again from 0.
+      leg.tracker.seedTalk(await speakers.list(db, v.id));
       if (gone()) return;
       const row = await legs.open(db, v.id, { speechId: v.id, kind: "main", requestedT: r });
       leg.rowId = row.id;
@@ -237,26 +258,34 @@ export function createSessionRunner(deps: {
     v.lastError = message;
     leg.link?.close();
     log.warn({ sessionId: v.id, err: message, attempt: v.attempt }, "a speech leg failed; reopening after a backoff");
-    await endLegRow(leg, "error");
-    if (v.done) return;
     v.recoveringSince ??= now();
-    let session = await sessions.setRecovering(db, v.id);
-    if (!v.done && now() - v.recoveringSince >= ATTENTION_AFTER_MS) {
-      const text = `recovering since ${hhmm(v.recoveringSince)} UTC: ${message}`;
-      if (text !== v.attention) {
-        session = await sessions.setAttention(db, v.id, text);
-        v.attention = text;
+    try {
+      await endLegRow(leg, "error");
+      if (v.done) return;
+      let session = await sessions.setRecovering(db, v.id);
+      if (!v.done && now() - v.recoveringSince >= ATTENTION_AFTER_MS) {
+        const text = `recovering since ${hhmm(v.recoveringSince)} UTC: ${message}`;
+        if (text !== v.attention) {
+          session = await sessions.setAttention(db, v.id, text);
+          v.attention = text;
+        }
+      }
+      await publishUnlessStopped(v, session);
+    } catch (error) {
+      // The bookkeeping failed (the database is down); the video must still come back once it is not.
+      log.error({ sessionId: v.id, err: errorText(error) }, "recording a failed leg failed; retrying anyway");
+    } finally {
+      // Always scheduled unless stopped: a dead leg left as v.leg would block every later open for good.
+      if (!v.done && v.leg === leg) {
+        const delayS = BACKOFF_S[Math.min(v.attempt, BACKOFF_S.length - 1)]!;
+        v.attempt += 1;
+        v.leg = null;
+        v.retry = setTimer(() => {
+          v.retry = null;
+          openLeg(v, { loud: false }).catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "reopening a leg failed"));
+        }, delayS * 1000);
       }
     }
-    await publishUnlessStopped(v, session);
-    if (v.done) return;
-    const delayS = BACKOFF_S[Math.min(v.attempt, BACKOFF_S.length - 1)]!;
-    v.attempt += 1;
-    v.leg = null;
-    v.retry = setTimer(() => {
-      v.retry = null;
-      openLeg(v, { loud: false }).catch((error: unknown) => log.error({ sessionId: v.id, err: errorText(error) }, "reopening a leg failed"));
-    }, delayS * 1000);
   }
 
   /** Speech ended the leg because the source ended or speech stopped it: the video ends normally. */
@@ -275,8 +304,11 @@ export function createSessionRunner(deps: {
       log.debug({ sessionId: v.id, type: event.type }, "dropping an event from a leg that is no longer current");
       return;
     }
-    v.seq += 1;
-    await events.append(db, v.id, v.seq, event.type, event);
+    const seq = (seqs.get(v.id) ?? 0) + 1;
+    seqs.set(v.id, seq);
+    await events.append(db, v.id, seq, event.type, event);
+    // A stop (and maybe a new leg's cut) may have happened while the append was in flight: write nothing more.
+    if (!isCurrent(v, leg)) return;
     switch (event.type) {
       case "session.started": {
         if (leg.rowId !== null) await legs.started(db, leg.rowId, event.start_at);
@@ -303,6 +335,7 @@ export function createSessionRunner(deps: {
         return;
       }
       case "diar.turns":
+        // The tracker re-checks before each of its writes (its `live`).
         await leg.tracker.onTurns(event);
         return;
       case "speaker.new":
@@ -333,7 +366,6 @@ export function createSessionRunner(deps: {
     const v: Video = {
       id,
       loops: null,
-      seq: 0,
       leg: null,
       retry: null,
       attempt: 0,
@@ -401,7 +433,12 @@ export function createSessionRunner(deps: {
       const ids: string[] = [];
       for (const session of await sessions.running(db)) {
         if (!videos.has(session.id)) {
-          // Left by a previous process; recovering keeps counting from when it first broke.
+          // Left by a previous process: its legs died with it. Recovering keeps counting from when it first broke.
+          try {
+            await legs.endOpen(db, session.id, "api restarted");
+          } catch (error) {
+            log.error({ sessionId: session.id, err: errorText(error) }, "closing the leg rows a previous process left failed");
+          }
           const since = session.recovering_since ? Date.parse(session.recovering_since) : now();
           try {
             await revive(session, since);

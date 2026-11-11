@@ -38,6 +38,17 @@ export async function ended(db: Queryable, legId: number, input: { endT: number;
   await db.query("update session_legs set end_t = $2, end_reason = $3, ended_at = now() where id = $1", [legId, input.endT, input.reason]);
 }
 
+/** Ends the video's legs still open (a process that held them died): at the end of what is stored, never before its start. */
+export async function endOpen(db: Queryable, sessionId: string, reason: string): Promise<number> {
+  const { rowCount } = await db.query(
+    `update session_legs set end_reason = $2, ended_at = now(),
+       end_t = greatest(coalesce(start_t, requested_t), coalesce((select max(t1) from segments where session_id = $1), 0))
+     where session_id = $1 and ended_at is null`,
+    [sessionId, reason],
+  );
+  return rowCount ?? 0;
+}
+
 export async function latest(db: Queryable, sessionId: string): Promise<Leg | null> {
   const { rows } = await db.query<Row>(`select ${COLUMNS} from session_legs where session_id = $1 order by id desc limit 1`, [sessionId]);
   return rows[0] ? toLeg(rows[0]) : null;
