@@ -2,22 +2,31 @@ import { Router, type Response } from "express";
 import { z } from "zod";
 
 import type { AgentDefinition } from "../agents/agent";
+import { type LlmClient, toOutputSchema } from "../agents/llm-client";
 import { listVersions, loadPrompt, overrideFor, shippedPrompt } from "../agents/prompts/registry";
 import { agentById, AGENTS } from "../agents/registry";
-import { type ActivityLine, type AgentCard, type AgentDetail, type RunSummary, slowMsFor, WatchSettings } from "../contracts-agents";
+import { type ActivityLine, type AgentCard, type AgentDetail, type AgentEvent, type Rerun, type RunSummary, slowMsFor, WatchSettings } from "../contracts-agents";
 import { actorOf } from "../auth";
 import { atomic, type Queryable } from "../db";
 import { mergeDefault, mergeSession, runningSessions } from "../ingest/config-patch";
 import type { SessionRunner } from "../ingest/session-runner";
+import { childLogger } from "../lib/logger";
 import type { Hub } from "../realtime/hub";
 import * as agentEvents from "../repositories/agent-events";
 import * as runs from "../repositories/agent-runs";
+import * as calls from "../repositories/calls";
 import * as incidents from "../repositories/incidents";
 import * as sessions from "../repositories/sessions";
 import * as settings from "../repositories/settings";
 import { configError } from "./sessions.routes";
 
+const log = childLogger({ module: "agents" });
+
 const STRIP = 24;
+/** A rerun still pending after this was cut off by a restart: nothing is working on it. */
+const RERUN_GIVE_UP_MS = 10 * 60 * 1000;
+/** The aliases the proxy takes. A stored call names what the alias resolved to, which cannot be sent back. */
+const MODEL_ALIASES = new Set(["haiku", "sonnet", "opus", "test"]);
 const refuse = (res: Response, status: number, error: string): void => void res.status(status).json({ error });
 const limitOf = (value: unknown, fallback: number, max: number): number => Math.min(Math.max(Number(value) || fallback, 1), max);
 
@@ -87,11 +96,32 @@ export async function summarise(db: Queryable, agent: AgentDefinition, rows: run
   return rows.map(({ parsed, step: _step, ...row }) => ({ ...row, status: runs.statusOf(row, slowMs), result: agent.describe({ error: row.error, parsed }, effects.get(row.id)!) }));
 }
 
+const RerunBody = z.object({ prompt_version: z.string().regex(/^v\d+$/).optional(), model: z.string().min(1).optional() });
+
+/** A rerun as its event holds it. */
+function toRerun(event: AgentEvent): Rerun {
+  const data = (event.data ?? {}) as Partial<Rerun>;
+  const stale = data.status === "pending" && Date.now() - Date.parse(event.created_at) > RERUN_GIVE_UP_MS;
+  const version = data.prompt_version ?? "";
+  return {
+    id: event.id,
+    call_id: event.call_id ?? 0,
+    status: stale ? "failed" : (data.status ?? "pending"),
+    prompt_version: version,
+    model: data.model ?? "",
+    output: data.output ?? null,
+    parsed_ok: data.parsed_ok ?? null,
+    error: stale ? "interrupted" : (data.error ?? null),
+    latency_ms: data.latency_ms ?? null,
+    note: `Uses the text of ${version} as it stands now.`,
+  };
+}
+
 const SettingsBody = z.object({ set: z.record(z.string(), z.unknown()), apply: z.enum(["all", "new", "running"]).default("all") });
 const CallsQuery = z.object({ session: z.uuid().optional(), before: z.coerce.number().int().positive().optional() });
 
 /** The agents: who they are, how each is doing, and what each did. Reads only in this file's first part; writes follow. */
-export function agentsRouter({ db, hub, runner }: { db: Queryable; hub: Hub; runner: SessionRunner }): Router {
+export function agentsRouter({ db, hub, runner, llm }: { db: Queryable; hub: Hub; runner: SessionRunner; llm?: LlmClient }): Router {
   const router = Router();
 
   router.get("/agents", async (_req, res, next) => {
@@ -200,6 +230,63 @@ export function agentsRouter({ db, hub, runner }: { db: Queryable; hub: Hub; run
         sessions: updated.map((session) => ({ id: session.id, title: session.title })),
         waits_for_next_start: updated.length > 0 ? Object.keys(set).filter((key) => agent.fixedAtStart.includes(key)) : [],
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Sends a stored call again, with another version of the instructions or another model, to read what comes back. It
+  // answers at once and works in the background: a model call can take minutes. Nothing is stored but the event: no
+  // row in llm_calls (the extractor's cursor is its furthest answered call), no claims, names, timeline or summary.
+  router.post("/calls/:id/rerun", async (req, res, next) => {
+    try {
+      const call = await calls.get(db, Number(req.params.id) || 0);
+      if (!call) return refuse(res, 404, "call not found");
+      const agent = agentById(call.step);
+      // An agent that answers in free text fills its instructions with values that are not stored (the summarizer's word limits).
+      if (!agent?.output) return refuse(res, 400, `run again is not offered for this agent${agent ? `: the ${agent.name} has its own way to write again` : ""}`);
+      const body = RerunBody.safeParse(req.body ?? {});
+      if (!body.success) return refuse(res, 400, `${body.error.issues[0]?.path.join(".") || "body"}: ${body.error.issues[0]?.message}`);
+      const version = body.data.prompt_version ?? call.prompt_version;
+      if (!listVersions(agent.id).includes(version)) return refuse(res, 400, `no ${agent.id} prompt ${version}`);
+      if (!llm) return refuse(res, 503, "this api has no model client");
+      const prompt = loadPrompt(agent.id, version);
+      const model = body.data.model ?? (MODEL_ALIASES.has(call.model) ? call.model : prompt.model);
+      // A retry's stored input already holds the first answer and its correction; the run's first attempt is what was asked.
+      const firstId = (await runs.attemptsOf(db, call.id))[0] ?? call.id;
+      const first = firstId === call.id ? call : ((await calls.get(db, firstId)) ?? call);
+      const pending = { status: "pending" as const, prompt_version: version, model };
+      const event = await agentEvents.add(db, { agentId: agent.id, sessionId: call.session_id, callId: call.id, kind: "rerun", summary: `Run again with ${version} on ${model}`, data: pending, actor: actorOf(req) });
+      res.status(202).json(toRerun(event));
+
+      const outputSchema = toOutputSchema(agent.output);
+      const output = agent.output;
+      void (async () => {
+        const started = Date.now();
+        try {
+          const answer = await llm.complete({ model, system: prompt.text.replace("{{schema}}", JSON.stringify(outputSchema, null, 2)), user: first.input, maxTokens: prompt.maxTokens, outputSchema });
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(answer.text);
+          } catch {
+            parsed = undefined;
+          }
+          await agentEvents.setData(db, event.id, { ...pending, status: "done", output: answer.text, parsed_ok: output.safeParse(parsed).success, latency_ms: answer.latencyMs });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await agentEvents.setData(db, event.id, { ...pending, status: "failed", error: message, latency_ms: Date.now() - started }).catch((inner) => log.warn({ err: String(inner) }, "a rerun's failure could not be stored"));
+        }
+      })();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/reruns/:id", async (req, res, next) => {
+    try {
+      const event = await agentEvents.get(db, Number(req.params.id) || 0);
+      if (!event || event.kind !== "rerun") return refuse(res, 404, "no such rerun");
+      res.json(toRerun(event));
     } catch (error) {
       next(error);
     }

@@ -135,3 +135,20 @@ export const ActivityLine = z.object({
   status: RunStatus.nullable(),
 });
 export type ActivityLine = z.infer<typeof ActivityLine>;
+
+/** A stored call sent again to see what another version or model answers. It is kept as an event and changes nothing else. */
+export const Rerun = z.object({
+  id: z.number(),
+  call_id: z.number(),
+  status: z.enum(["pending", "done", "failed"]),
+  prompt_version: z.string(),
+  model: z.string(),
+  output: z.string().nullable(),
+  /** Whether the new answer matches the shape the agent's answers must have. */
+  parsed_ok: z.boolean().nullable(),
+  error: z.string().nullable(),
+  latency_ms: z.number().nullable(),
+  /** What a reader must know about how faithful the rerun is. */
+  note: z.string(),
+});
+export type Rerun = z.infer<typeof Rerun>;
