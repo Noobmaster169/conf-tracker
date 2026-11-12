@@ -15,6 +15,12 @@ const Env = z.object({
   API_SHARED_SECRET: z.string().min(1),
   // How many live events a session keeps for SSE reconnects before a client must refetch the snapshot.
   SSE_RING_CAPACITY: z.coerce.number().int().positive().default(1000),
+  // Cloudflare R2, where frames go (docs/superpowers/specs/2026-11-13-frames-design.md). Without all five, no frames.
+  R2_ENDPOINT: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_PUBLIC_URL: z.string().optional(),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 });
 

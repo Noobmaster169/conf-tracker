@@ -17,6 +17,13 @@ RUN pnpm install --frozen-lockfile
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Frames (src/frames): ffmpeg reads the stream, yt-dlp resolves it. yt-dlp is pinned to what speech runs on the box
+# (YouTube breaks old ones: bump it when frame grabs start failing with "yt-dlp exited"). It needs python3; its
+# JS-challenge solver runs on this image's node.
+ARG YTDLP_VERSION=2026.08.19
+RUN apk add --no-cache ffmpeg python3 bash \
+  && wget -qO /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
+  && chmod 755 /usr/local/bin/yt-dlp
 RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S api -G nodejs
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./

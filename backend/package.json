@@ -12,6 +12,7 @@
     "simulate": "node --env-file-if-exists=.env --import tsx scripts/simulate.ts"
   },
   "dependencies": {
+    "aws4fetch": "1.0.20",
     "express": "^5.2.1",
     "pg": "^8.22.0",
     "pino": "^10.3.1",

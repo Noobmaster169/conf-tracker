@@ -15,6 +15,9 @@ import { childLogger } from "./lib/logger";
 import { fetchVideoTitle } from "./lib/video-title";
 import { createHub } from "./realtime/hub";
 import { setOverrides } from "./agents/prompts/registry";
+import { createFramer } from "./frames/framer";
+import { ytMedia } from "./frames/media";
+import { r2Store } from "./frames/store";
 import * as promptOverrides from "./repositories/prompt-overrides";
 
 const log = childLogger({ module: "api" });
@@ -33,7 +36,11 @@ const runner = createSessionRunner({
   connect: wsSpeechConnector(config.SPEECH_URL),
   loops: [trackerFactory(llm, summarize), extractorFactory(llm), namerFactory(llm)],
 });
-const app = createApp({ db, hub, runner, summarize, post, llm, fetchTitle: fetchVideoTitle });
+// Pictures of the stage go to R2; without its settings the framer stays off and the api says so.
+const frameStore = r2Store(config);
+const framer = frameStore ? createFramer({ db, media: ytMedia, store: frameStore, live: () => runner.live() }) : null;
+if (!framer) log.warn("R2 is not configured: no frames");
+const app = createApp({ db, hub, runner, summarize, post, llm, fetchTitle: fetchVideoTitle, framer, frameUrl: frameStore?.url ?? null });
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT, speech: config.SPEECH_URL, proxy: config.LLM_PROXY_URL }, "api listening"));
 // Videos a previous process left running are fed again from the second they stopped. Not awaited: listening comes first.
@@ -53,10 +60,12 @@ void resumed.then(() => {
   // Its own client with a short patience: a diagnosis is a nicety, and a model that hangs should not hold a proxy slot for minutes.
   const watcher = createWatcher({ db, runner, llm: proxyLlmClient({ timeoutMs: 60_000 }) });
   setInterval(() => void watcher.pass(), 60 * 1000).unref();
+  framer?.start();
 });
 
 async function shutdown(): Promise<void> {
   try {
+    framer?.stop();
     server.close();
     await closePool();
   } catch (error) {

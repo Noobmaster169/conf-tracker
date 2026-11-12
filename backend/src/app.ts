@@ -17,6 +17,8 @@ import { claimsRouter } from "./routes/claims.routes";
 import { conferenceRouter } from "./routes/conference.routes";
 import { correctionsRouter } from "./routes/corrections.routes";
 import { eventsRouter } from "./routes/events.routes";
+import { framesRouter } from "./routes/frames.routes";
+import type { Framer } from "./frames/framer";
 import { opsRouter, type Probe } from "./routes/ops.routes";
 import { sessionsRouter } from "./routes/sessions.routes";
 import { speakersRouter } from "./routes/speakers.routes";
@@ -37,6 +39,10 @@ export interface AppDeps {
   fetchTitle?: (url: string) => Promise<string | null>;
   /** How /ops/status asks the proxy and speech for their health. Tests give a fake. */
   probe?: Probe;
+  /** Grabs pictures of running videos; null or absent when R2 is not configured. */
+  framer?: Framer | null;
+  /** The public URL of a stored frame key. */
+  frameUrl?: ((key: string) => string) | null;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -67,6 +73,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(correctionsRouter(deps));
   app.use(opsRouter(deps));
   app.use(agentsRouter(deps));
+  app.use(framesRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.
