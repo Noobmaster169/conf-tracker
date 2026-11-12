@@ -97,3 +97,25 @@ export const OpsStatus = z.object({
     .nullable(),
 });
 export type OpsStatus = z.infer<typeof OpsStatus>;
+
+export const Incident = z.object({
+  id: z.number(),
+  rule: z.string(),
+  agent_id: z.string().nullable(),
+  session_id: z.string().nullable(),
+  session_title: z.string().nullable(),
+  call_id: z.number().nullable(),
+  parent_id: z.number().nullable(),
+  title: z.string(),
+  detail: z.string(),
+  diagnosis: z.string().nullable(),
+  first_seen: z.string(),
+  last_seen: z.string(),
+  count: z.number(),
+  acknowledged_at: z.string().nullable(),
+  resolved_at: z.string().nullable(),
+});
+export type Incident = z.infer<typeof Incident>;
+
+/** Still wrong and not yet marked resolved by anyone. */
+export const isOpen = (incident: Incident): boolean => incident.resolved_at === null && incident.acknowledged_at === null;

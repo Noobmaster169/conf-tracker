@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { agoText, dotClass } from "@/lib/agents";
+import { dotClass, lastRunText } from "@/lib/agents";
 import type { AgentCard } from "@/lib/api-client";
 
 import { RunStrip } from "./run-strip";
@@ -16,7 +16,7 @@ export function AgentRow({ agent, now }: { agent: AgentCard; now: Date }) {
         <span className="ml-auto hidden md:block">
           <RunStrip recent={agent.recent} />
         </span>
-        <span className="w-28 shrink-0 text-right text-[13px] text-ink-soft">{agoText(agent.last_run_at, now)}</span>
+        <span className="w-36 shrink-0 text-right text-[13px] text-ink-soft">{lastRunText(agent, now)}</span>
         <span aria-hidden className="text-ink-faint">›</span>
       </Link>
     </li>

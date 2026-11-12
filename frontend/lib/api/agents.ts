@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AgentCard, AgentDetail, CallWindow, OpsStatus, RunSummary } from "./agent-schemas";
+import { AgentCard, AgentDetail, CallWindow, Incident, OpsStatus, RunSummary } from "./agent-schemas";
 import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
 
 export * from "./agent-schemas";
@@ -44,4 +44,23 @@ export function getCall(id: number): Promise<CallWindow | null> {
 
 export function getOpsStatus(): Promise<OpsStatus> {
   return get(OpsStatus, "/ops/status");
+}
+
+/** A write made from Admin says so, so the record of changes can name who made it. */
+async function send<T>(schema: z.ZodType<T>, method: "POST" | "PUT" | "PATCH", path: string, body: unknown = {}, timeoutMs = 30_000): Promise<T> {
+  const response = await request(path, { method, body: JSON.stringify(body), timeoutMs, headers: { "x-actor": "admin" } });
+  if (!response.ok) throw new BackendError(await refusalMessage(response), response.status);
+  return parseAs(schema, response, `${method} ${path}`);
+}
+
+export function listIncidents(filter: { open?: boolean; agent?: string; limit?: number } = {}): Promise<Incident[]> {
+  const query = new URLSearchParams();
+  if (filter.open) query.set("open", "1");
+  if (filter.agent) query.set("agent", filter.agent);
+  if (filter.limit) query.set("limit", String(filter.limit));
+  return get(z.array(Incident), `/incidents?${query}`);
+}
+
+export function resolveIncident(id: number): Promise<Incident> {
+  return send(Incident, "POST", `/incidents/${id}/resolve`);
 }

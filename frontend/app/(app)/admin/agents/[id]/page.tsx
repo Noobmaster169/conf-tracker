@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 
 import { CallList } from "@/components/agents/call-list";
 import { CallWindow } from "@/components/agents/call-window";
+import { IncidentBanners } from "@/components/agents/incident-banner";
+import { IncidentList } from "@/components/agents/incident-list";
 import { RunStrip } from "@/components/agents/run-strip";
 import { Notice, Panel } from "@/components/admin/parts";
 import { Page } from "@/components/ui/bits";
-import { agoText, dotClass } from "@/lib/agents";
-import { getAgent, getCall, listAgentCalls } from "@/lib/api-client";
+import { dotClass, lastRunText } from "@/lib/agents";
+import { getAgent, getCall, listAgentCalls, listIncidents } from "@/lib/api-client";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +46,13 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
   const callId = Number(one(query.call)) || undefined;
   const limit = allCalls ? FULL : PAGE;
 
-  const [runs, opened] = await Promise.all([listAgentCalls(id, { session, status, before, limit }), callId ? getCall(callId) : Promise.resolve(null)]);
+  const isWatcher = agent.id === "watch";
+  const [runs, opened, incidents] = await Promise.all([
+    listAgentCalls(id, { session, status, before, limit }),
+    callId ? getCall(callId) : Promise.resolve(null),
+    // The Watcher's page holds the whole record; any other agent's shows only what is wrong with it now.
+    isWatcher ? listIncidents({ limit: 100 }) : listIncidents({ open: true, agent: agent.id }),
+  ]);
   const now = new Date();
   const base = `/admin/agents/${agent.id}`;
 
@@ -63,7 +71,7 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
       {label}
     </Link>
   );
-  const emptyText = status === "failed" ? "No failed calls." : status === "slow" ? "No slow calls." : session ? "No calls on this video." : "It has not run yet.";
+  const emptyText = isWatcher && !status ? "It has not had to ask the model about anything yet." : status === "failed" ? "No failed calls." : status === "slow" ? "No slow calls." : session ? "No calls on this video." : "It has not run yet.";
 
   return (
     <Page narrow>
@@ -84,7 +92,7 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
         </div>
         <p className="mt-1 max-w-[65ch] text-ink-soft">{agent.role}</p>
         <p className="mt-1 text-[13px] text-ink-soft">
-          {agent.trigger} Last ran: {agoText(agent.last_run_at, now)}.
+          {agent.trigger} Last asked the model: {lastRunText(agent, now)}.
         </p>
         <dl className="mt-5 grid gap-4 sm:grid-cols-2">
           <Labels title="Reads" items={agent.reads} />
@@ -94,8 +102,15 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
       <Notice error={query.error} done={query.done} />
       {callId !== undefined && opened === null && <Notice error="That call no longer exists." />}
 
+      {!isWatcher && <IncidentBanners incidents={incidents} now={now} />}
+
       <div className="grid grid-cols-1 gap-6">
-        <Panel title="Calls" lead="Every time it asked the model. Open one to read what it was given and what it answered.">
+        {isWatcher && (
+          <Panel title="Incidents" lead="What it found wrong. One that goes away closes itself; one you mark resolved is not raised again while it lasts.">
+            <IncidentList incidents={incidents} now={now} back={base} />
+          </Panel>
+        )}
+        <Panel title={isWatcher ? "Its own calls" : "Calls"} lead={isWatcher ? "Each time it asked the model what was wrong with an incident." : "Every time it asked the model. Open one to read what it was given and what it answered."}>
           <div className="mb-3 flex flex-wrap gap-2">
             {filter("All", href({ status: null, before: null, call: null }), !status)}
             {filter("Failed", href({ status: "failed", before: null, call: null }), status === "failed")}

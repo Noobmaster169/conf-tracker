@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { agoText, clockText, dotClass } from "./agents";
+import { agoText, clockText, dotClass, lastRunText } from "./agents";
 import { AgentCard } from "./api/agent-schemas";
 
 const now = new Date("2026-11-12T12:00:00Z");
@@ -28,4 +28,10 @@ test("each status has its own dot", () => {
 test("a card for an agent that never ran parses", () => {
   const card = AgentCard.parse({ id: "watch", name: "Watcher", role: "r", trigger: "t", internal: true, prompt_version: null, model: null, status: "idle", last_run_at: null, recent: [], open_incidents: 0 });
   expect(card.recent).toEqual([]);
+});
+
+test("lastRunText: the Watcher having asked nothing is not the same as an agent that never ran", () => {
+  expect(lastRunText({ internal: true, last_run_at: null }, now)).toBe("nothing to look into yet");
+  expect(lastRunText({ internal: false, last_run_at: null }, now)).toBe("has not run yet");
+  expect(lastRunText({ internal: true, last_run_at: "2026-11-12T11:56:00Z" }, now)).toBe("4 min ago");
 });

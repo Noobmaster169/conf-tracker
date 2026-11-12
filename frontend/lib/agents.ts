@@ -38,3 +38,9 @@ export function tookText(ms: number): string {
   const seconds = ms / 1000;
   return seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
 }
+
+/** When an agent last asked the model. The Watcher looks every minute but asks the model only about trouble, so for it "never" is good news. */
+export function lastRunText(agent: { internal: boolean; last_run_at: string | null }, now: Date): string {
+  if (agent.last_run_at === null && agent.internal) return "nothing to look into yet";
+  return agoText(agent.last_run_at, now);
+}
