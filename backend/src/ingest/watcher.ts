@@ -66,6 +66,7 @@ interface VideoRow {
   replay_of: string | null;
   config: Record<string, unknown>;
   transcript_t: number;
+  transcript_idle_s: number;
   has_schedule: boolean;
 }
 
@@ -92,6 +93,7 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
     const { rows } = await db.query<VideoRow>(
       `select s.id, s.title, s.source_url, s.status, s.attention, s.replay_of, s.config,
               coalesce((select max(g.t1) from segments g where g.session_id = s.id), 0)::float8 as transcript_t,
+              coalesce((select extract(epoch from now() - max(g.created_at)) from segments g where g.session_id = s.id), 0)::float8 as transcript_idle_s,
               exists (select 1 from talks t where t.stage_id = s.stage_id and t.archived_at is null) as has_schedule
          from sessions s
         where s.id = any($1::uuid[])
@@ -108,11 +110,18 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
         const slowMs = slowMsFor(watch, agent.id);
         const recent = await runs.listRuns(db, { agentId: agent.id, sessionId: row.id, limit: RUNS_PER_AGENT, slowMs });
         const reach = await db.query<{ t1: number }>(`select coalesce(max(window_t1), 0)::float8 as t1 from llm_calls where session_id = $1 and step = $2`, [row.id, agent.id]);
-        agents[agent.id] = { runs: recent.map((run) => ({ id: run.id, status: runs.statusOf(run, slowMs), error: run.error })), lastWindowT1: reach.rows[0]?.t1 ?? 0 };
+        // The oldest line that arrived after the agent's last call (after nothing, when it never called).
+        const waiting = await db.query<{ s: number }>(
+          `select coalesce(extract(epoch from now() - min(g.created_at)), 0)::float8 as s from segments g
+            where g.session_id = $1
+              and g.created_at > coalesce((select max(c.created_at) from llm_calls c where c.session_id = $1 and c.step = $2), '-infinity')`,
+          [row.id, agent.id],
+        );
+        agents[agent.id] = { runs: recent.map((run) => ({ id: run.id, status: runs.statusOf(run, slowMs), error: run.error })), lastWindowT1: reach.rows[0]?.t1 ?? 0, waitingS: waiting.rows[0]?.s ?? 0 };
       }
       videos.push({
         id: row.id, title: row.title ?? nameless(row.source_url), status: row.status, attention: row.attention, isReplay: row.replay_of !== null, held: held.has(row.id), hasSchedule: row.has_schedule,
-        transcriptT: row.transcript_t, config: row.config ?? {}, agents,
+        transcriptT: row.transcript_t, transcriptIdleS: row.transcript_idle_s, config: row.config ?? {}, agents,
       });
     }
 

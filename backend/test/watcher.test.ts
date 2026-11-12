@@ -328,6 +328,26 @@ it("the tracker making no calls on a stage with no schedule is not reported", as
   });
 });
 
+it("an agent is quiet only while lines keep arriving that it has not answered for two minutes; a break is not quiet", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await aVideo(tx);
+    await sessions.setStatus(tx, v.id, "live");
+    const line = (t1: number, agoS: number) => tx.query("insert into segments (session_id, t0, t1, text, words, created_at) values ($1, $2, $3, 'x', '[]', now() - make_interval(secs => $4))", [v.id, t1 - 10, t1, agoS]);
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up });
+    // A break: the last line came ten minutes ago, far past the extractor's last window.
+    await aCall(tx, v.id, { windowT0: 0, windowT1: 30 });
+    await tx.query("update llm_calls set created_at = now() - interval '11 minutes' where session_id = $1", [v.id]);
+    await line(900, 600);
+    await watcher.pass();
+    expect((await open(tx)).filter((i) => i.agent_id === "extract")).toEqual([]);
+    // Lines keep coming and the extractor still has not answered: quiet.
+    await line(1000, 5);
+    await watcher.pass();
+    expect((await open(tx)).filter((i) => i.agent_id === "extract").map((i) => i.rule)).toEqual(["agent_quiet"]);
+  });
+});
+
 it("the index that keeps the Watcher's per-minute read of runs cheap exists", async () => {
   await inRollback(async (tx) => {
     const { rows } = await tx.query("select indexdef from pg_indexes where tablename = 'llm_calls' and indexname = 'llm_calls_run'");

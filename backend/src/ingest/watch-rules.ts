@@ -31,9 +31,14 @@ export interface WatchFacts {
     hasSchedule: boolean;
     /** Where the transcript reaches, in stream seconds. */
     transcriptT: number;
+    /** Seconds since its newest line arrived. Over a break nothing arrives, and nothing is waiting on anyone. */
+    transcriptIdleS: number;
     config: Record<string, unknown>;
-    /** Per agent id: its newest runs on this video, newest first, and where its furthest window ends. */
-    agents: Record<string, { runs: { id: number; status: RunStatus; error: string | null }[]; lastWindowT1: number }>;
+    /**
+     * Per agent id: its newest runs on this video, newest first, where its furthest window ends, and for how many
+     * seconds the oldest line that arrived after its last call has waited on it (0 when none has).
+     */
+    agents: Record<string, { runs: { id: number; status: RunStatus; error: string | null }[]; lastWindowT1: number; waitingS: number }>;
   }[];
   /** Probes failed in a row, this pass included. */
   proxyFails: number;
@@ -43,6 +48,11 @@ export interface WatchFacts {
 
 /** Only these have an interval the transcript can outrun: the namer waits for an unnamed voice, the summarizer for a session to end. */
 const CAN_GO_QUIET = new Set(["track", "extract"]);
+/**
+ * Quiet is measured on the clock too, not only on stream time: lines must still be arriving, and some must have waited
+ * this long on the agent. A break (nothing arrives) and the jump in stream time when speech returns are neither.
+ */
+const QUIET_WAIT_S = 120;
 
 const newestAll = (runs: { status: RunStatus }[], n: number, status: RunStatus): boolean => runs.length >= n && runs.slice(0, n).every((run) => run.status === status);
 
@@ -67,7 +77,7 @@ export function evaluate(facts: WatchFacts, settings: WatchSettings, agents: Age
     for (const agent of agents) {
       // Old runs prove nothing about agents that are not running.
       if (!video.held || agent.internal || agent.settingsScope !== "video") continue;
-      const seen = video.agents[agent.id] ?? { runs: [], lastWindowT1: 0 };
+      const seen = video.agents[agent.id] ?? { runs: [], lastWindowT1: 0, waitingS: Number.POSITIVE_INFINITY };
       const about = { agentId: agent.id, sessionId: video.id, parentRule: "proxy_down" as const };
       const failing = newestAll(seen.runs, settings.fail_runs, "failed");
       if (failing) {
@@ -78,7 +88,8 @@ export function evaluate(facts: WatchFacts, settings: WatchSettings, agents: Age
       const on = setting(agent, video.config, agent.id) !== false;
       // A failing agent is not also quiet: its failures are why the transcript ran ahead of it.
       const idleByDesign = agent.id === "track" && !video.hasSchedule;
-      if (!failing && !idleByDesign && CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
+      const linesWaiting = video.transcriptIdleS < QUIET_WAIT_S && seen.waitingS > QUIET_WAIT_S;
+      if (!failing && !idleByDesign && linesWaiting && CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
         add(found, "agent_quiet", `${agent.name} has gone quiet on ${video.title}`, {
           ...about,
           detail: `The transcript is ${Math.round(video.transcriptT - seen.lastWindowT1)} s past its last run.`,
