@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Empty, Page, StatusTag, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
-import { Gallery } from "@/components/ui/gallery";
+import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk, getTalkFrames } from "@/lib/api-client";
@@ -84,6 +84,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
         </ul>
       )}
       {talk.description && <p className="mt-6 max-w-[72ch] text-ink-soft">{talk.description}</p>}
+      {tab !== "gallery" && <FrameStrip frames={frames} title={talk.title} galleryHref={`/sessions/${talk.id}?tab=gallery`} />}
 
       <div className="mt-10">
         <Tabs
