@@ -3,7 +3,10 @@
 import { useEffect, useReducer } from "react";
 
 import { LiveEvent, type Snapshot } from "@/lib/api/schemas";
+import type { Relay } from "@/lib/relay-ticket";
 import { applyEvent, initialState, setConnection, type Connection, type SessionState } from "@/lib/session-state";
+
+import { relayWatch, streamUrl, type Source } from "./stream-source";
 
 type Action = { kind: "event"; event: LiveEvent; at: number } | { kind: "connection"; value: Connection };
 
@@ -15,18 +18,24 @@ const TYPES = ["snapshot", "segment", "segment.updated", "turns", "speaker", "he
 
 /**
  * One EventSource per page. The browser reconnects on its own and sends
- * Last-Event-ID, which the route handler forwards, so a short drop replays
- * from the ring and a long one gets a fresh snapshot.
+ * Last-Event-ID, which the relay or the route handler honours, so a short drop replays
+ * from the ring and a long one gets a fresh snapshot. With a relay, the stream opens there
+ * first and moves to the Vercel route, once, if the relay refuses or stalls.
  */
-export function useSessionStream(snapshot: Snapshot): SessionState {
+export function useSessionStream(snapshot: Snapshot, relay: Relay | null): SessionState {
   const [state, dispatch] = useReducer(reduce, snapshot, initialState);
 
   // A video that has ended has nothing more to send, so it opens no stream: the page is the snapshot.
   const ended = snapshot.session.status === "stopped" || snapshot.session.status === "degraded";
+  const relayUrl = relay?.url;
+  const relayTicket = relay?.ticket;
 
   useEffect(() => {
     if (ended) return;
-    const source = new EventSource(`/api/sessions/${encodeURIComponent(snapshot.session.id)}/events?after=${snapshot.seq}`);
+    const sessionId = snapshot.session.id;
+    const viaRelay = relayUrl && relayTicket ? { url: relayUrl, ticket: relayTicket } : null;
+    let lastSeq = snapshot.seq;
+    let source: EventSource | null = null;
     const onEvent = (message: MessageEvent<string>) => {
       let json: unknown = null;
       try {
@@ -39,13 +48,36 @@ export function useSessionStream(snapshot: Snapshot): SessionState {
         console.warn("event outside the contract", parsed.error.issues[0]);
         return;
       }
+      lastSeq = parsed.data.seq;
       dispatch({ kind: "event", event: parsed.data, at: Date.now() });
     };
-    for (const type of TYPES) source.addEventListener(type, onEvent);
-    source.onopen = () => dispatch({ kind: "connection", value: "open" });
-    source.onerror = () => dispatch({ kind: "connection", value: source.readyState === EventSource.CLOSED ? "closed" : "connecting" });
-    return () => source.close();
-  }, [snapshot.session.id, snapshot.seq, ended]);
+    const open = (kind: Source, onOpen?: () => void, onError?: (closed: boolean) => void) => {
+      source?.close();
+      const opened = new EventSource(streamUrl(sessionId, lastSeq, viaRelay, kind));
+      source = opened;
+      for (const type of TYPES) opened.addEventListener(type, onEvent);
+      opened.onopen = () => {
+        onOpen?.();
+        dispatch({ kind: "connection", value: "open" });
+      };
+      opened.onerror = () => {
+        const closed = opened.readyState === EventSource.CLOSED;
+        dispatch({ kind: "connection", value: closed ? "closed" : "connecting" });
+        onError?.(closed);
+      };
+    };
+    if (!viaRelay) {
+      open("vercel");
+      return () => source?.close();
+    }
+    const watch = relayWatch(() => open("vercel"));
+    open("relay", watch.opened, watch.errored);
+    watch.started();
+    return () => {
+      watch.stop();
+      source?.close();
+    };
+  }, [snapshot.session.id, snapshot.seq, ended, relayUrl, relayTicket]);
 
   return state;
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { LiveBadge } from "@/components/ui/bits";
 import type { Snapshot } from "@/lib/api/schemas";
+import type { Relay } from "@/lib/relay-ticket";
 import { sessionState } from "@/lib/session-state";
 
 import { LiveClaims } from "./live-claims";
@@ -17,8 +18,8 @@ import { useSessionStream } from "./use-session-stream";
  * frame with the video and transcript on the left and the claims on the right, each scrolling on its own; on a phone
  * they stack and the page scrolls.
  */
-export function VideoView({ snapshot, start }: { snapshot: Snapshot; start: number | null }) {
-  const state = useSessionStream(snapshot);
+export function VideoView({ snapshot, start, relay }: { snapshot: Snapshot; start: number | null; relay: Relay | null }) {
+  const state = useSessionStream(snapshot, relay);
   const [seek, setSeek] = useState<number | null>(start);
   const { session, stage } = state;
   const live = session.status === "live" || session.status === "starting" || session.status === "recovering";

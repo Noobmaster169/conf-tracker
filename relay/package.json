@@ -1,0 +1,22 @@
+{
+  "name": "conf-tracker-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --import tsx src/index.ts",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit",
+    "load": "node --import tsx scripts/load.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.23.12",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

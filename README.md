@@ -96,4 +96,5 @@ Tests: `pnpm test` in `backend/` (needs the compose Postgres; database `conf_tra
 
 Progress and the current phase: `docs/PROGRESS.md`.
 
-Deployment on the Monash box, the public URL and the Vercel settings: `deploy/README.md`.
+Deployment on the Monash box, the public URL and the Vercel settings: `deploy/README.md`. Live updates for
+viewers come from the relay on the yt-engine VPS: `relay/README.md`.

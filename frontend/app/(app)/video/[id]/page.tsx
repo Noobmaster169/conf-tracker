@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { VideoView } from "@/components/video/video-view";
 import { getFeed, getSnapshot, getTranscript, type FeedItem } from "@/lib/api-client";
+import { relayFor } from "@/lib/relay-ticket";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function VideoPage({ params, searchParams }: PageProps<"/vi
   if (!snapshot) notFound();
   const live = snapshot.session.status === "live" || snapshot.session.status === "starting" || snapshot.session.status === "recovering";
   // A finished video is read from the top, so it gets all of its transcript; a live one opens at its newest lines.
-  const [segments, claims] = await Promise.all([live ? snapshot.segments : getTranscript(id), allClaims(id)]);
+  const [segments, claims, relay] = await Promise.all([live ? snapshot.segments : getTranscript(id), allClaims(id), live ? relayFor(id) : null]);
   const start = typeof t === "string" && /^\d+$/.test(t) ? Number(t) : null;
-  return <VideoView snapshot={{ ...snapshot, segments, claims }} start={start} />;
+  return <VideoView snapshot={{ ...snapshot, segments, claims }} start={start} relay={relay} />;
 }
