@@ -33,6 +33,8 @@ export const AgentDetail = AgentCard.extend({
   reads: z.array(z.string()),
   writes: z.array(z.string()),
   settings_scope: z.enum(["video", "global"]),
+  prompt_key: z.string().nullable(),
+  model_key: z.string().nullable(),
   settings: z.array(AgentSetting),
   instructions: z.array(AgentInstructions),
 });
@@ -119,3 +121,24 @@ export type Incident = z.infer<typeof Incident>;
 
 /** Still wrong and not yet marked resolved by anyone. */
 export const isOpen = (incident: Incident): boolean => incident.resolved_at === null && incident.acknowledged_at === null;
+
+export const ActivityLine = z.object({
+  at: z.string(),
+  kind: z.enum(["call", "change", "rerun"]),
+  summary: z.string(),
+  actor: z.string().nullable(),
+  call_id: z.number().nullable(),
+  status: RunStatus.nullable(),
+});
+export type ActivityLine = z.infer<typeof ActivityLine>;
+
+export const PromptText = z.object({ step: z.string(), version: z.string(), model: z.string(), text: z.string() });
+export type PromptText = z.infer<typeof PromptText>;
+
+/** What a settings change did: PATCH /agents/:id/settings. */
+export const SettingsResult = z.object({
+  default_changed: z.boolean(),
+  sessions: z.array(z.object({ id: z.string(), title: z.string().nullable() })),
+  waits_for_next_start: z.array(z.string()),
+});
+export type SettingsResult = z.infer<typeof SettingsResult>;

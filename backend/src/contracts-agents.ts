@@ -62,6 +62,9 @@ export const AgentDetail = AgentCard.extend({
   reads: z.array(z.string()),
   writes: z.array(z.string()),
   settings_scope: z.enum(["video", "global"]),
+  /** Which of its settings name its instructions version and its model. */
+  prompt_key: z.string().nullable(),
+  model_key: z.string().nullable(),
   settings: z.array(AgentSetting),
   instructions: z.array(AgentInstructions),
 });

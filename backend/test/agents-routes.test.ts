@@ -59,7 +59,7 @@ it("GET /agents/name reports each setting with its default, stored value and fix
     await settings.put(tx, "default_config", { name_floor: 0.6 });
     const res = await get(appOn(tx), "/agents/name");
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: "name", settings_scope: "video", reads: expect.any(Array), writes: ["a name for a voice"] });
+    expect(res.body).toMatchObject({ id: "name", settings_scope: "video", prompt_key: "name_prompt", model_key: "name_model", reads: expect.any(Array), writes: ["a name for a voice"] });
     const by = Object.fromEntries(res.body.settings.map((s: { key: string }) => [s.key, s]));
     expect(by.name_floor).toEqual({ key: "name_floor", value: 0.6, default: 0.7, fixed_at_start: false, valid: true });
     expect(by.name_interval_s).toMatchObject({ value: 60, default: 60, fixed_at_start: true });

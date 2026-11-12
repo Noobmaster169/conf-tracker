@@ -112,7 +112,7 @@ export function agentsRouter({ db, hub, runner }: { db: Queryable; hub: Hub; run
       const [watch, incidents, stored] = await Promise.all([settings.watchSettings(db), openIncidents(db), storedSettings(db, agent)]);
       const rows = settingRows(agent, stored);
       const card = await cardOf(db, agent, watch, incidents, rows);
-      const detail: AgentDetail = { ...card, reads: agent.reads, writes: agent.writes, settings_scope: agent.settingsScope, settings: rows, instructions: instructionsOf(agent, card.prompt_version) };
+      const detail: AgentDetail = { ...card, reads: agent.reads, writes: agent.writes, settings_scope: agent.settingsScope, prompt_key: agent.promptKey ?? null, model_key: agent.modelKey ?? null, settings: rows, instructions: instructionsOf(agent, card.prompt_version) };
       res.json(detail);
     } catch (error) {
       next(error);

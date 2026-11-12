@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { Activity } from "@/components/agents/activity";
 import { CallList } from "@/components/agents/call-list";
 import { CallWindow } from "@/components/agents/call-window";
 import { IncidentBanners } from "@/components/agents/incident-banner";
 import { IncidentList } from "@/components/agents/incident-list";
+import { Instructions, InstructionsEditor, InstructionsWindow } from "@/components/agents/instructions";
 import { RunStrip } from "@/components/agents/run-strip";
+import { Settings } from "@/components/agents/settings-form";
 import { Notice, Panel } from "@/components/admin/parts";
 import { Page } from "@/components/ui/bits";
 import { dotClass, lastRunText } from "@/lib/agents";
-import { getAgent, getCall, listAgentCalls, listIncidents } from "@/lib/api-client";
+import { getAgent, getCall, getPrompt, listActivity, listAgentCalls, listIncidents } from "@/lib/api-client";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +50,17 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
   const limit = allCalls ? FULL : PAGE;
 
   const isWatcher = agent.id === "watch";
-  const [runs, opened, incidents] = await Promise.all([
+  const instructionsView = one(query.instructions);
+  const editingSettings = one(query.settings) === "edit";
+  const inUse = agent.instructions.find((i) => i.in_use && i.exists)?.version;
+  const wantedVersion = instructionsView === "edit" ? inUse : instructionsView;
+  const [runs, opened, incidents, activity, promptText] = await Promise.all([
     listAgentCalls(id, { session, status, before, limit }),
     callId ? getCall(callId) : Promise.resolve(null),
     // The Watcher's page holds the whole record; any other agent's shows only what is wrong with it now.
     isWatcher ? listIncidents({ limit: 100 }) : listIncidents({ open: true, agent: agent.id }),
+    listActivity(id, { limit: PAGE }),
+    wantedVersion ? getPrompt(agent.id, wantedVersion) : Promise.resolve(null),
   ]);
   const now = new Date();
   const base = `/admin/agents/${agent.id}`;
@@ -59,7 +68,7 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
   /** This page's address with some of its parameters changed; null or undefined takes one away. */
   const href = (changes: Record<string, string | number | null | undefined>): string => {
     const next = new URLSearchParams();
-    const current: Record<string, string | number | undefined> = { view: allCalls ? "calls" : undefined, session, status, before, call: callId };
+    const current: Record<string, string | number | undefined> = { view: allCalls ? "calls" : undefined, session, status, before, call: callId, instructions: instructionsView, settings: editingSettings ? "edit" : undefined };
     for (const [key, value] of Object.entries({ ...current, ...changes })) if (value !== null && value !== undefined) next.set(key, String(value));
     const text = next.toString();
     return text ? `${base}?${text}` : base;
@@ -138,8 +147,26 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
             )}
           </div>
         </Panel>
+
+        <Panel title="Activity" lead="What it did, and what was changed about it and by whom.">
+          <Activity lines={activity} hrefFor={(call) => href({ call })} now={now} />
+        </Panel>
+
+        <Panel title="Instructions" lead="What it is told to do. A change is saved as a new version, so what ran before can always be read and put back.">
+          <Instructions agent={agent} hrefFor={(view) => href({ instructions: view, call: null })} />
+        </Panel>
+
+        <Panel title="Settings" lead={agent.settings_scope === "video" ? "What new videos start with. A change can also reach the videos running now." : "How it watches. One set for the whole app."}>
+          <div id="settings">
+            <Settings agent={agent} editing={editingSettings} editHref={`${href({ settings: "edit", call: null })}#settings`} closeHref={href({ settings: null, call: null })} />
+          </div>
+        </Panel>
       </div>
 
+      {instructionsView === "edit" && <InstructionsEditor agent={agent} current={promptText} closeHref={href({ instructions: null })} />}
+      {instructionsView && instructionsView !== "edit" && promptText && (
+        <InstructionsWindow prompt={promptText} source={agent.instructions.find((i) => i.version === promptText.version)?.source ?? "file"} closeHref={href({ instructions: null })} />
+      )}
       {opened && <CallWindow data={opened} videoTitle={runs.find((run) => run.session_id === opened.call.session_id)?.session_title ?? null} closeHref={href({ call: null })} now={now} />}
     </Page>
   );

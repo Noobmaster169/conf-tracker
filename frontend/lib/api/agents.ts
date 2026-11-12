@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AgentCard, AgentDetail, CallWindow, Incident, OpsStatus, RunSummary } from "./agent-schemas";
+import { ActivityLine, AgentCard, AgentDetail, CallWindow, Incident, OpsStatus, PromptText, RunSummary, SettingsResult } from "./agent-schemas";
 import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
 
 export * from "./agent-schemas";
@@ -63,4 +63,25 @@ export function listIncidents(filter: { open?: boolean; agent?: string; limit?: 
 
 export function resolveIncident(id: number): Promise<Incident> {
   return send(Incident, "POST", `/incidents/${id}/resolve`);
+}
+
+export function listActivity(id: string, filter: { before?: string; limit?: number } = {}): Promise<ActivityLine[]> {
+  const query = new URLSearchParams();
+  if (filter.before) query.set("before", filter.before);
+  if (filter.limit) query.set("limit", String(filter.limit));
+  return get(z.array(ActivityLine), `/agents/${encodeURIComponent(id)}/activity?${query}`);
+}
+
+export function getPrompt(step: string, version: string): Promise<PromptText | null> {
+  return getOrNull(PromptText, `/ops/prompts/${encodeURIComponent(step)}/${encodeURIComponent(version)}`, "GET /ops/prompts/:step/:version");
+}
+
+export function putPrompt(step: string, version: string, body: { text: string; model?: string }): Promise<PromptText> {
+  return send(PromptText, "PUT", `/ops/prompts/${encodeURIComponent(step)}/${encodeURIComponent(version)}`, body);
+}
+
+export type Apply = "all" | "new" | "running";
+
+export function patchSettings(id: string, set: Record<string, unknown>, apply: Apply): Promise<SettingsResult> {
+  return send(SettingsResult, "PATCH", `/agents/${encodeURIComponent(id)}/settings`, { set, apply });
 }
