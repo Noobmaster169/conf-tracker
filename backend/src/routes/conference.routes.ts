@@ -5,6 +5,7 @@ import type { Queryable } from "../db";
 import * as cards from "../repositories/cards";
 import * as feed from "../repositories/feed";
 import * as photos from "../repositories/photos";
+import * as posts from "../repositories/posts";
 import * as summaries from "../repositories/summaries";
 
 // A person's or a talk's page shows its claims in one go; more than this is paged through GET /feed.
@@ -92,7 +93,7 @@ export function conferenceRouter({ db }: { db: Queryable }): Router {
       }
       const claims = await feed.list(db, FeedQuery.parse({ talk: id, limit: PAGE_CLAIMS }));
       // Oldest first: a talk's claims read in the order they were said.
-      const detail: TalkDetail = { ...card, summary: await summaries.latest(db, id), claims: claims.items.reverse() };
+      const detail: TalkDetail = { ...card, summary: await summaries.latest(db, id), post: await posts.latest(db, id), claims: claims.items.reverse() };
       res.json(detail);
     } catch (error) {
       next(error);

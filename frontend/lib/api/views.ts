@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Person, Stage, Talk, TalkSummary } from "./conference";
+import { Person, Stage, Talk, TalkPost, TalkSummary } from "./conference";
 import { Claim, Gap, Session } from "./schemas";
 
 /** What the pages read, mirrored by hand from backend/src/contracts-views.ts. Change both or neither. */
@@ -43,7 +43,8 @@ export const TalkCard = z.object({
 });
 export type TalkCard = z.infer<typeof TalkCard>;
 
-export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), claims: z.array(FeedItem) });
+// `post` defaults to null: the dashboard ships before the api while a video holds the api's deploy back.
+export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), post: TalkPost.nullable().default(null), claims: z.array(FeedItem) });
 export type TalkDetail = z.infer<typeof TalkDetail>;
 
 // conferences: from a visible schedule, a video the person was heard in, or a listing. Defaults so an older api still parses.

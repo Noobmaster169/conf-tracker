@@ -9,9 +9,10 @@
 # run options: --prompt v6  --model sonnet  --set key=value (repeatable)  --from S --to S  --label text
 #   extract   re-extracts claims from the stored transcript (names and timeline copied from the original)
 #   summarize writes every talk's summary again from the original's timeline
+#   post      writes every summarised talk's X post again from the original's claims and summaries
 #   track     reads what was on stage again (no summaries)
 #   name      names the voices again
-#   all       track, name and extract together on one clock, then summarize: the whole pipeline after speech
+#   all       track, name and extract together on one clock, then summarize and post: the whole pipeline after speech
 #
 # A prompt version is read from backend/src/agents/prompts/<step>/vN.md on this machine: write the file, run it.
 # Models go through the box's llm-proxy over an SSH tunnel (127.0.0.1:4013): the same login and models as live, so a

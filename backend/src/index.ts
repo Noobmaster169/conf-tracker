@@ -7,6 +7,7 @@ import { namerFactory } from "./ingest/namer";
 import { createSessionRunner } from "./ingest/session-runner";
 import { createSweeper } from "./ingest/sweeper";
 import { createWatcher } from "./ingest/watcher";
+import { createPoster, withPost } from "./ingest/poster";
 import { createSummarizer } from "./ingest/summarizer";
 import { trackerFactory } from "./ingest/tracker";
 import { wsSpeechConnector } from "./ingest/speech-client";
@@ -23,14 +24,16 @@ const db = getPool();
 setOverrides(await promptOverrides.list(db));
 const hub = createHub(config.SSE_RING_CAPACITY);
 const llm = proxyLlmClient();
-const summarize = createSummarizer({ db, llm });
+// Every summary written brings the talk's X post with it.
+const post = createPoster({ db, llm });
+const summarize = withPost(createSummarizer({ db, llm }), post);
 const runner = createSessionRunner({
   db,
   hub,
   connect: wsSpeechConnector(config.SPEECH_URL),
   loops: [trackerFactory(llm, summarize), extractorFactory(llm), namerFactory(llm)],
 });
-const app = createApp({ db, hub, runner, summarize, llm, fetchTitle: fetchVideoTitle });
+const app = createApp({ db, hub, runner, summarize, post, llm, fetchTitle: fetchVideoTitle });
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT, speech: config.SPEECH_URL, proxy: config.LLM_PROXY_URL }, "api listening"));
 // Videos a previous process left running are fed again from the second they stopped. Not awaited: listening comes first.
@@ -40,8 +43,8 @@ const resumed = runner
   .catch((error) => log.error({ err: error instanceof Error ? error.message : String(error) }, "resuming videos a restart left running failed"));
 
 // What a stopped video still owes (windows a downed model left, summaries that failed) is finished in the background.
-const sweeper = createSweeper({ db, hub, llm, summarize, runner });
-const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length || r.gaps.length) && log.info(r, "sweep finished work"));
+const sweeper = createSweeper({ db, hub, llm, summarize, post, runner });
+const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.summarised.length || r.posted.length || r.gaps.length) && log.info(r, "sweep finished work"));
 // Only after resumeAll has settled: until then the runner does not yet know which videos it is reviving.
 void resumed.then(() => {
   sweep();

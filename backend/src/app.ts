@@ -4,6 +4,7 @@ import type { LlmClient } from "./agents/llm-client";
 import { requireCaller } from "./auth";
 import type { Queryable } from "./db";
 import type { SessionRunner } from "./ingest/session-runner";
+import type { WritePost } from "./ingest/poster";
 import type { Summarize } from "./ingest/summarizer";
 import { RetryableError, TerminalError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
@@ -29,6 +30,8 @@ export interface AppDeps {
   hub: Hub;
   runner: SessionRunner;
   summarize?: Summarize;
+  /** Writes a talk's X post again (POST /talks/:id/post). Without it that route answers 409. */
+  post?: WritePost;
   /** For running a stored call again (POST /calls/:id/rerun). Without it that route answers 503. */
   llm?: LlmClient;
   fetchTitle?: (url: string) => Promise<string | null>;

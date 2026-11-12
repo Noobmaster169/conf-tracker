@@ -54,6 +54,10 @@ export async function writeSummaryAction(form: FormData): Promise<void> {
   await run(form, "/admin", "Summary written", async () => void (await api.writeSummary(Number(text(form, "id")))));
 }
 
+export async function writePostAction(form: FormData): Promise<void> {
+  await run(form, "/admin", "Post written", async () => void (await api.writePost(Number(text(form, "id")))));
+}
+
 export async function trackVideoAction(form: FormData): Promise<void> {
   await run(form, "/admin", "Tracking started", async () => void (await api.createSession(text(form, "url"), orNull(form, "stage_id"))));
 }

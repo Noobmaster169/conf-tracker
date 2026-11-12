@@ -25,9 +25,10 @@ export const TALK_AT = `
 
 /**
  * Claims as a reader meets them: verified, not a repeat, from an original video (a replay is an experiment on the same
- * audio), each with the person who said it and the talk it was said in.
+ * audio), each with the person who said it and the talk it was said in. `replays` keeps the replays' claims too, for an
+ * agent reading its own video, which may be an eval variant.
  */
-const FEED = `
+const feedCte = (replays: boolean) => `
 with recursive ${SURVIVOR_CTE},
 feed as (
   select ${claimRepo.COLUMNS.split(", ").map((c) => `c.${c}`).join(", ")},
@@ -42,8 +43,9 @@ feed as (
   left join people p on p.id = sv.person_id
   ${TALK_AT}
   left join talks t on t.id = k.talk_id
-  where ss.replay_of is null and c.status = 'ok'
+  where ${replays ? "" : "ss.replay_of is null and "}c.status = 'ok'
 )`;
+const FEED = feedCte(false);
 
 interface Row extends claimRepo.Row {
   speaker_name: string | null;
@@ -94,4 +96,10 @@ export async function list(db: Queryable, query: FeedQuery): Promise<Feed> {
   const { rows } = await db.query<Row>(`${FEED} select f.* from feed f ${where} order by f.id desc limit ${p(query.limit + 1)}`, params);
   const page = rows.slice(0, query.limit).map(toItem);
   return { items: page, next_before: rows.length > query.limit ? (page.at(-1)?.id ?? null) : null };
+}
+
+/** The verified claims said during one talk in one video, oldest first, replays included: what the Poster writes from. */
+export async function ofTalkInVideo(db: Queryable, sessionId: string, talkId: number, limit = 200): Promise<FeedItem[]> {
+  const { rows } = await db.query<Row>(`${feedCte(true)} select f.* from feed f where f.session_id = $1 and f.talk_id = $2 order by f.t0, f.id limit $3`, [sessionId, talkId, limit]);
+  return rows.map(toItem);
 }

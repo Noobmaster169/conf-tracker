@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { listSteps, listVersions, loadPrompt, overrideFor, setOverrides, shippedPrompt } from "../agents/prompts/registry";
 import { actorOf } from "../auth";
-import { ExtractConfig, NameConfig, SummaryConfig, TrackConfig } from "../contracts";
+import { ExtractConfig, NameConfig, PostConfig, SummaryConfig, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
 import { httpProbe, type Probe, proxyHealthUrl, speechHealthUrl } from "../lib/health";
@@ -51,7 +51,7 @@ const refuse = (res: Response, status: number, error: string): void => void res.
 
 /** Every setting a video's config can hold with its default, so nobody has to read the code to know the keys. */
 function configDefaults(): Record<string, unknown> {
-  return { ...ExtractConfig.parse({}), ...NameConfig.parse({}), ...TrackConfig.parse({}), ...SummaryConfig.parse({}) };
+  return { ...ExtractConfig.parse({}), ...NameConfig.parse({}), ...TrackConfig.parse({}), ...SummaryConfig.parse({}), ...PostConfig.parse({}) };
 }
 
 /** Rows of a read-only statement. On the pool it runs in a read-only transaction with a time limit, so it cannot write or hang. */

@@ -214,7 +214,7 @@ ops/ct: the live stack, through its api. What to use for what: CLAUDE.md at the 
   status                         what is deployed, healthy, held back or failing, and the box's last report
   incidents [all]                what the Watcher found wrong (open ones; `all` for the whole record)
   agents                         every agent in one line: status, last 24 runs, instructions, model
-  agent ID                       one agent: its settings and instructions (track, name, extract, summarize, watch)
+  agent ID                       one agent: its settings and instructions (track, name, extract, summarize, post, watch)
   calls ID [failed|slow] [n]     an agent's latest runs; `get /calls/N` opens one with its input and output
   box                            the box's whole last report (log tails of every piece)
   logs [n] [level] [module] [text]   the api's own newest log lines, e.g. `logs 200 warn`

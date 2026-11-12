@@ -34,7 +34,7 @@ const toSummaryRow = (row: SummaryRow): CallSummary => CallSummary.parse({ ...ro
 const toCall = (row: Row): LlmCall => LlmCall.parse({ ...row, id: Number(row.id), created_at: row.created_at.toISOString() });
 
 export interface NewCall {
-  /** The talk a summarize call was written for; absent on every other step. */
+  /** The talk a summarize or post call was written for; absent on every other step. */
   talkId?: number | null;
   step: string;
   promptVersion: string;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createTalkAction, importScheduleAction, removeTalkAction, updateStageAction, updateTalkAction, writeSummaryAction } from "@/app/actions/admin";
+import { createTalkAction, importScheduleAction, removeTalkAction, updateStageAction, updateTalkAction, writePostAction, writeSummaryAction } from "@/app/actions/admin";
 import { Field, Notice, Panel, SubmitButton, TalkFields } from "@/components/admin/parts";
 import { Page } from "@/components/ui/bits";
 import { getStage } from "@/lib/api-client";
@@ -93,6 +93,11 @@ export default async function StagePage({ params, searchParams }: PageProps<"/ad
                       <input type="hidden" name="id" value={talk.id} />
                       <input type="hidden" name="back" value={back} />
                       <SubmitButton quiet working="Writing, this takes a minute">Write the summary again</SubmitButton>
+                    </form>
+                    <form action={writePostAction}>
+                      <input type="hidden" name="id" value={talk.id} />
+                      <input type="hidden" name="back" value={back} />
+                      <SubmitButton quiet working="Writing, this takes a minute">Write the post again</SubmitButton>
                     </form>
                     <form action={removeTalkAction}>
                       <input type="hidden" name="id" value={talk.id} />

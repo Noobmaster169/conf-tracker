@@ -26,3 +26,9 @@ export async function latest(db: Queryable, talkId: number): Promise<TalkSummary
   const { rows } = await db.query<Row>(`select ${COLUMNS} from talk_summaries where talk_id = $1 order by id desc limit 1`, [talkId]);
   return rows[0] ? toSummary(rows[0]) : null;
 }
+
+/** The newest summary of a talk as it was heard in one video. */
+export async function latestFor(db: Queryable, talkId: number, sessionId: string): Promise<TalkSummary | null> {
+  const { rows } = await db.query<Row>(`select ${COLUMNS} from talk_summaries where talk_id = $1 and session_id = $2 order by id desc limit 1`, [talkId, sessionId]);
+  return rows[0] ? toSummary(rows[0]) : null;
+}

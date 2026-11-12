@@ -14,8 +14,9 @@ fix are.
 ## The agents
 
 Every model call is the work of an agent: the Tracker (`track`, which session is on stage), the Namer (`name`, who
-each voice is), the Extractor (`extract`, the claims), the Summarizer (`summarize`, a session's write-up) and the
-Watcher (`watch`, which looks at the others once a minute and records incidents). Admin › Agents shows each one;
+each voice is), the Extractor (`extract`, the claims), the Summarizer (`summarize`, a session's write-up), the
+Poster (`post`, a session's highlight post for X, written after its summary; Admin › Stages has "Write the post again",
+or `ops/ct post /talks/ID/post`) and the Watcher (`watch`, which looks at the others once a minute and records incidents). Admin › Agents shows each one;
 the same is on a terminal:
 
 - `ops/ct agents`: every agent in a line, with its last 24 runs (`.` ok, `X` failed, `s` slow).

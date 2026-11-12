@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { listVersions } from "../agents/prompts/registry";
-import { CreateSessionBody, ExtractConfig, NameConfig, ReplayBody, SummaryConfig, TrackConfig } from "../contracts";
+import { CreateSessionBody, ExtractConfig, NameConfig, PostConfig, ReplayBody, SummaryConfig, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
 import { replayConfig } from "../lib/replay-config";
@@ -41,6 +41,9 @@ export function configError(config: Record<string, unknown>): string | null {
   const summary = SummaryConfig.safeParse(config);
   if (!summary.success) return `config.${summary.error.issues[0]?.path.join(".")}: ${summary.error.issues[0]?.message}`;
   if (!listVersions("summarize").includes(summary.data.summary_prompt)) return `no summarize prompt ${summary.data.summary_prompt}`;
+  const post = PostConfig.safeParse(config);
+  if (!post.success) return `config.${post.error.issues[0]?.path.join(".")}: ${post.error.issues[0]?.message}`;
+  if (!listVersions("post").includes(post.data.post_prompt)) return `no post prompt ${post.data.post_prompt}`;
   return null;
 }
 

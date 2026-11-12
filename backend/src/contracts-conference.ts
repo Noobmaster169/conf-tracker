@@ -95,6 +95,20 @@ export const SummaryConfig = z.object({
 });
 export type SummaryConfig = z.infer<typeof SummaryConfig>;
 
+// The Poster's settings, in session.config like the summarizer's. It writes once a talk's summary is written.
+export const PostConfig = z.object({
+  post: z.boolean().default(true),
+  post_model: z.string().min(1).default("opus"),
+  post_prompt: z.string().regex(/^v\d+$/).default("v1"),
+  // Added under every post, after a blank line, by the code and not the model, so it is always exactly this.
+  post_footer: z.string().max(500).default("Real-time Breakpoint Alpha streamed at: https://breakpoint.fiber.ag"),
+});
+export type PostConfig = z.infer<typeof PostConfig>;
+
+// A talk's highlight post for X, footer included: what the session page shows and the X button sends.
+export const TalkPost = z.object({ id: z.number(), talk_id: z.number(), session_id: z.string(), text: z.string(), created_at: z.string() });
+export type TalkPost = z.infer<typeof TalkPost>;
+
 const text = (max: number) => z.string().trim().max(max);
 const optionalText = (max: number) => text(max).nullish().transform((v) => v || null);
 

@@ -46,14 +46,14 @@ const describe = (error: z.ZodError): string => error.issues.map((issue) => `${i
 export async function callStructured<T>(
   deps: StructuredDeps,
   schema: z.ZodType<T>,
-  window: { t0: number; t1: number },
+  window: { t0: number; t1: number; talkId?: number },
   input: string,
   store?: (tx: Queryable, call: LlmCall, data: T) => Promise<void>,
 ): Promise<StructuredResult<T>> {
   const { db, llm, sessionId, prompt } = deps;
   const outputSchema = toOutputSchema(schema);
   const system = prompt.text.replace("{{schema}}", JSON.stringify(outputSchema, null, 2));
-  const base = { step: prompt.step, promptVersion: prompt.version, windowT0: window.t0, windowT1: window.t1 };
+  const base = { step: prompt.step, promptVersion: prompt.version, windowT0: window.t0, windowT1: window.t1, talkId: window.talkId ?? null };
   let user = input;
   for (let attempt = 1; ; attempt++) {
     const started = Date.now();

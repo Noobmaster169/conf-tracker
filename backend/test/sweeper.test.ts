@@ -130,7 +130,7 @@ test("a sweep that fails reports nothing instead of throwing, and a sweep never 
   await inRollback(async (tx) => {
     const broken = { query: () => Promise.reject(new Error("db gone")) } as unknown as typeof tx;
     const failing = createSweeper({ db: broken, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize: noSummary, runner: runnerOf() });
-    expect(await failing.sweep()).toEqual({ extracted: [], summarised: [], gaps: [] });
+    expect(await failing.sweep()).toEqual({ extracted: [], summarised: [], posted: [], gaps: [] });
 
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -138,7 +138,7 @@ test("a sweep that fails reports nothing instead of throwing, and a sweep never 
     const slow = { query: async (...args: unknown[]) => { queries += 1; await gate; return (tx.query as (...a: unknown[]) => unknown)(...args); } } as unknown as typeof tx;
     const sweeper = createSweeper({ db: slow, hub: createHub(10), llm: fakeLlm(NO_CLAIMS).client, summarize: noSummary, runner: runnerOf() });
     const first = sweeper.sweep();
-    expect(await sweeper.sweep()).toEqual({ extracted: [], summarised: [], gaps: [] });
+    expect(await sweeper.sweep()).toEqual({ extracted: [], summarised: [], posted: [], gaps: [] });
     expect(queries).toBe(1);
     release();
     await first;

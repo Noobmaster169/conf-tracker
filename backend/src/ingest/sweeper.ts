@@ -4,9 +4,11 @@ import type { Queryable } from "../db";
 import { childLogger } from "../lib/logger";
 import type { Hub } from "../realtime/hub";
 import * as calls from "../repositories/calls";
+import * as posts from "../repositories/posts";
 import * as spans from "../repositories/spans";
 import { type Extractor, extractorFactory } from "./extractor";
 import { createGapFiller } from "./gap-filler";
+import type { WritePost } from "./poster";
 import type { SessionRunner } from "./session-runner";
 import { summaryAllowed } from "./summary-allowance";
 import type { Summarize } from "./summarizer";
@@ -21,6 +23,8 @@ const EXTRACT_BACKOFF_MS = 15 * 60 * 1000;
 export interface SweepReport {
   extracted: string[];
   summarised: number[];
+  /** Talks whose X post was written by the sweep. */
+  posted: number[];
   /** Gaps that advanced a stage of their fill. */
   gaps: number[];
 }
@@ -41,6 +45,8 @@ export interface SweeperDeps {
   hub: Hub;
   llm: LlmClient;
   summarize: Summarize;
+  /** Writes the posts that talks summarised without one still owe. Without it the sweep writes none. */
+  post?: WritePost;
   runner: SessionRunner;
   config?: ExtractConfig;
   /** The clock, in ms; injected by tests. */
@@ -139,9 +145,23 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
     }
   }
 
+  /** Talks with a summary and no post since it: written before the Poster existed, or a post that failed. Paced as summaries are. */
+  async function postTalks(report: SweepReport): Promise<void> {
+    if (!deps.post) return;
+    for (const { sessionId, talkId } of await posts.unposted(db, SCAN_DAYS)) {
+      if (runner.pending().includes(sessionId)) continue;
+      try {
+        if (!(await summaryAllowed(db, sessionId, talkId, now(), { step: "post" }))) continue;
+        if (await deps.post(sessionId, talkId)) report.posted.push(talkId);
+      } catch (error) {
+        log.error({ sessionId, talkId, err: errorText(error) }, "sweeping a talk's post failed");
+      }
+    }
+  }
+
   return {
     async sweep() {
-      const report: SweepReport = { extracted: [], summarised: [], gaps: [] };
+      const report: SweepReport = { extracted: [], summarised: [], posted: [], gaps: [] };
       if (running) return report;
       running = true;
       try {
@@ -149,6 +169,7 @@ export function createSweeper(deps: SweeperDeps): { sweep(): Promise<SweepReport
         // After the backlogs, so a gap is filled only behind a finished extraction; before the summaries, which it may redo.
         await fillAllGaps(report);
         await summariseTalks(report);
+        await postTalks(report);
       } catch (error) {
         log.error({ err: errorText(error) }, "sweep failed");
       } finally {

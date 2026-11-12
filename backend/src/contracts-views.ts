@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Claim, ClaimKind, Gap, Person, Session, Stage, Talk, TalkSummary } from "./contracts";
+import { Claim, ClaimKind, Gap, Person, Session, Stage, Talk, TalkPost, TalkSummary } from "./contracts";
 
 /** What the app's pages read: claims with who and where resolved, and cards for videos, talks and people. Mirrored in the frontend's lib/api/conference.ts. */
 
@@ -58,7 +58,7 @@ export const TalkCard = z.object({
 });
 export type TalkCard = z.infer<typeof TalkCard>;
 
-export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), claims: z.array(FeedItem) });
+export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), post: TalkPost.nullable(), claims: z.array(FeedItem) });
 export type TalkDetail = z.infer<typeof TalkDetail>;
 
 /** `conferences`: every conference the person belongs to, from a visible schedule, a video they were heard in, or a listing. */

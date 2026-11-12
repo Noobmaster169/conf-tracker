@@ -10,7 +10,7 @@ when something important is announced. Design: `docs/superpowers/specs/2026-11-0
 | --- | --- |
 | Videos (`/`) | Every stream tracked, as cards. A video's page has the player, the session on stage, the live transcript and its claims. |
 | Monitor (`/monitor`) | The newest claims from every stage and who made them. Refreshes itself. |
-| Sessions (`/sessions`) | Each stage's schedule. A session that has finished opens to a written summary and its claims. |
+| Sessions (`/sessions`) | Each stage's schedule. A session that has finished opens to its claims, a written summary and a highlight post for X with a button to post it. |
 | Speakers (`/speakers`) | Everyone heard or scheduled. A speaker's page lists everything they have claimed. |
 | Admin (`/admin`) | Stages and their schedules, starting a video on a stage, correcting what is on stage, speaker profiles. Agents (`/admin/agents`): every agent that asks the model, each call with its input and output, its instructions and settings, and what the Watcher found wrong. |
 
@@ -18,10 +18,11 @@ How it fits together: the admin creates a **stage** (one stage of one conference
 schedule. A **video** is bound to a stage. While it runs, a tracker reads the last minutes of transcript against the
 schedule every minute and keeps a timeline of which session is on stage; extraction and speaker naming are told what
 the schedule says; a named voice is linked to a **person**; a claim belongs to the session whose stretch of the
-timeline covers it; and a session that leaves the stage gets its summary.
+timeline covers it; and a session that leaves the stage gets its summary, then its post for X (from the summary and its claims; the
+footer line is the `post_footer` setting).
 
 In the code a scheduled session is a `talk` and a video is a `session` (the table yt-stream started with), so the two
-never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize}`. The summary prompt is yt-engine's, adapted for a conference session.
+never share a word. Prompts: `backend/src/agents/prompts/{track,extract,name,summarize,post}`. The summary prompt is yt-engine's, adapted for a conference session.
 
 ## Putting data right through the API
 

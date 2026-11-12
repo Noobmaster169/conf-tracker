@@ -9,11 +9,12 @@
 import { proxyLlmClient } from "../src/agents/llm-client";
 import { setOverrides, shippedPrompt } from "../src/agents/prompts/registry";
 import { config } from "../src/config";
-import { ExtractConfig, NameConfig, SummaryConfig, TrackConfig } from "../src/contracts";
+import { ExtractConfig, NameConfig, PostConfig, SummaryConfig, TrackConfig } from "../src/contracts";
 import { closePool, getPool } from "../src/db";
 import { createExtractor } from "../src/ingest/extractor";
 import type { Loop } from "../src/ingest/loop";
 import { createNamer } from "../src/ingest/namer";
+import { createPoster, withPost } from "../src/ingest/poster";
 import { createSummarizer } from "../src/ingest/summarizer";
 import { createTracker } from "../src/ingest/tracker";
 import { createHub } from "../src/realtime/hub";
@@ -21,11 +22,12 @@ import * as promptOverrides from "../src/repositories/prompt-overrides";
 
 if (config.PG_DATABASE !== "ct_eval") throw new Error(`eval runs only on the ct_eval copy, not ${config.PG_DATABASE}`);
 
-const AGENTS = ["extract", "summarize", "track", "name", "all"] as const;
+const AGENTS = ["extract", "summarize", "post", "track", "name", "all"] as const;
 type AgentArg = (typeof AGENTS)[number];
 const KEYS: Record<Exclude<AgentArg, "all">, { prompt: string; model: string }> = {
   extract: { prompt: "extract_prompt", model: "extract_model" },
   summarize: { prompt: "summary_prompt", model: "summary_model" },
+  post: { prompt: "post_prompt", model: "post_model" },
   track: { prompt: "track_prompt", model: "track_model" },
   name: { prompt: "name_prompt", model: "name_model" },
 };
@@ -156,6 +158,7 @@ async function run(args: string[]): Promise<void> {
   const nameCfg = NameConfig.parse(cfg);
   const trackCfg = TrackConfig.parse(cfg);
   SummaryConfig.parse(cfg);
+  PostConfig.parse(cfg);
 
   // Versions only prod knows (registered through the api) are usable here; a file on this machine wins over them,
   // so a draft vN.md is what runs.
@@ -188,6 +191,25 @@ async function run(args: string[]): Promise<void> {
       [original, id],
     );
   }
+  if (agent === "post") {
+    // The Poster writes from what the other agents made: the original's claims and summaries, as they are.
+    await q(
+      `insert into claims (session_id, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, created_at, kind, importance)
+       select $2, call_id, speaker_id, t0, t1, claim, topics, polarity, quote, quote_verified, status, created_at, kind, importance
+         from claims where session_id = $1 and t0 >= $3 and ($4::float8 is null or t0 <= $4) order by id`,
+      [original, id, from ?? 0, to],
+    );
+    // Only the talks on stage inside --from/--to get a post, so a short run is a few calls.
+    await q(
+      `insert into talk_summaries (talk_id, session_id, call_id, summary, created_at)
+       select m.talk_id, $2, m.call_id, m.summary, m.created_at from talk_summaries m
+        where m.session_id = $1
+          and exists (select 1 from talk_spans k where k.session_id = $1 and k.talk_id = m.talk_id and k.state = 'talk'
+                       and ($4::float8 is null or k.t0 <= $4) and (k.t1 is null or k.t1 >= $3))
+        order by m.id`,
+      [original, id, from ?? 0, to],
+    );
+  }
   const [{ end } = { end: null }] = await q<{ end: number | null }>("select max(t1)::float8 as end from segments where session_id = $1", [id]);
   if (end === null) throw new Error("no transcript in that range");
   const startT = from ?? 0;
@@ -209,7 +231,9 @@ async function run(args: string[]): Promise<void> {
       console.log(`  ${FAIL_LIMIT} failed calls in a row: giving up`);
     }
   });
-  const summarize = createSummarizer({ db, llm });
+  const post = createPoster({ db, llm });
+  // The whole pipeline writes posts after summaries, as live does; summarize alone judges the summaries only.
+  const summarize = agent === "all" ? withPost(createSummarizer({ db, llm }), post) : createSummarizer({ db, llm });
 
   if (agent === "extract") {
     const extractor = createExtractor({ db, hub, sessionId: id, llm, config: extractCfg });
@@ -251,6 +275,18 @@ async function run(args: string[]): Promise<void> {
       for (let talkId = queue.shift(); talkId !== undefined; talkId = queue.shift()) {
         const summary = await summarize(id, talkId);
         console.log(`  talk ${talkId}: ${summary ? "written" : "nothing (too short, or the call failed)"}`);
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+  }
+
+  if (agent === "post") {
+    const talks = await q<{ talk_id: string }>("select distinct talk_id::text from talk_summaries where session_id = $1", [id]);
+    const queue = talks.map((t) => Number(t.talk_id));
+    const worker = async () => {
+      for (let talkId = queue.shift(); talkId !== undefined; talkId = queue.shift()) {
+        const written = await post(id, talkId, { force: true });
+        console.log(`  talk ${talkId}: ${written ? "written" : "nothing (the call failed)"}`);
       }
     };
     await Promise.all([worker(), worker(), worker()]);
@@ -365,6 +401,25 @@ async function reportSummaries(a: Side, b: Side, out: string[]): Promise<void> {
   }
 }
 
+async function reportPosts(a: Side, b: Side, out: string[]): Promise<void> {
+  const load = async (s: Side) =>
+    new Map(
+      (
+        await q<{ talk_id: string; title: string; text: string }>(
+          `select distinct on (p.talk_id) p.talk_id::text, t.title, p.text from talk_posts p join talks t on t.id = p.talk_id where p.session_id = $1 order by p.talk_id, p.id desc`,
+          [s.id],
+        )
+      ).map((r) => [r.talk_id, r]),
+    );
+  const [ma, mb] = await Promise.all([load(a), load(b)]);
+  out.push("## Poster", "", `${ma.size} vs ${mb.size} posts. ${a.label}: ${await callStats(a, "post")}. ${b.label}: ${await callStats(b, "post")}.`, "");
+  for (const talkId of [...new Set([...ma.keys(), ...mb.keys()])].sort((x, y) => Number(x) - Number(y))) {
+    const x = ma.get(talkId);
+    const y = mb.get(talkId);
+    out.push(`### Talk ${talkId}: ${(x ?? y)!.title}`, "", `#### ${a.label}`, "", "```", x?.text ?? "(none)", "```", "", `#### ${b.label}`, "", "```", y?.text ?? "(none)", "```", "");
+  }
+}
+
 async function reportTrack(a: Side, b: Side, out: string[]): Promise<void> {
   type S = { talk_id: number | null; state: string; t0: number; t1: number | null; title: string | null };
   const load = (s: Side) =>
@@ -426,7 +481,7 @@ async function report(args: string[]): Promise<void> {
   const to = Math.min(ar!.eval?.to ?? end, br!.eval?.to ?? Number.POSITIVE_INFINITY, end);
   const a: Side = { id: aId, label: describe(aId, ar!.eval), from, to };
   const b: Side = { id: bId, label: describe(bId, br!.eval), from, to };
-  const agents = ar!.eval?.agent && ar!.eval.agent !== "all" ? [ar!.eval.agent] : ["track", "name", "extract", "summarize"];
+  const agents = ar!.eval?.agent && ar!.eval.agent !== "all" ? [ar!.eval.agent] : ["track", "name", "extract", "summarize", "post"];
   const out = [`# ${a.label} vs ${b.label}`, "", `Stream time ${fmtT(from)}-${fmtT(to)}.`, ""];
   if (!br!.eval && ar!.eval && ar!.eval.agent !== "all")
     out.push(
@@ -436,6 +491,7 @@ async function report(args: string[]): Promise<void> {
   for (const agent of agents) {
     if (agent === "extract") await reportExtract(a, b, out);
     if (agent === "summarize") await reportSummaries(a, b, out);
+    if (agent === "post") await reportPosts(a, b, out);
     if (agent === "track") await reportTrack(a, b, out);
     if (agent === "name") await reportNames(a, b, out);
   }

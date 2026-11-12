@@ -21,9 +21,10 @@ it("GET /agents lists five cards; one that never ran is idle with an empty strip
     expect((await request(app).get("/agents")).status).toBe(401);
     const res = await get(app, "/agents");
     expect(res.status).toBe(200);
-    expect(res.body.map((c: { id: string }) => c.id)).toEqual(["track", "name", "extract", "summarize", "watch"]);
-    const watch = res.body[4];
+    expect(res.body.map((c: { id: string }) => c.id)).toEqual(["track", "name", "extract", "summarize", "post", "watch"]);
+    const watch = res.body[5];
     expect(watch).toMatchObject({ name: "Watcher", internal: true, status: "idle", recent: [], last_run_at: null, open_incidents: 0, prompt_version: "v1", model: "haiku" });
+    expect(res.body[4]).toMatchObject({ name: "Poster", internal: false, prompt_version: "v1", model: "opus", trigger: "When a session's summary is written." });
     expect(res.body[2]).toMatchObject({ name: "Extractor", role: "Pulls the claims out of what is said on stage.", prompt_version: "v5", model: "sonnet", trigger: "Every 30 seconds of stream." });
   });
 });

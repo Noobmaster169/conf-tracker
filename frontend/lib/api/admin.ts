@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Person, Stage, Talk, TalkSummary } from "./conference";
+import { Person, Stage, Talk, TalkPost, TalkSummary } from "./conference";
 import { StageDetail, StageWithTalks } from "./views";
 import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
 
@@ -68,6 +68,11 @@ export async function removeTalk(id: number): Promise<void> {
 /** Answers once the summary is written, which takes the model up to a few minutes. */
 export function writeSummary(talkId: number): Promise<TalkSummary> {
   return send(TalkSummary, "POST", `/talks/${talkId}/summary`, {}, 300_000);
+}
+
+/** Answers once the post is written from the talk's summary and claims, which takes the model up to a minute or two. */
+export function writePost(talkId: number): Promise<TalkPost> {
+  return send(TalkPost, "POST", `/talks/${talkId}/post`, {}, 300_000);
 }
 
 export interface PersonInput {

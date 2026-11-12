@@ -50,3 +50,7 @@ export type SummaryBody = z.infer<typeof SummaryBody>;
 
 export const TalkSummary = z.object({ id: z.number(), talk_id: z.number(), session_id: z.string(), summary: SummaryBody, created_at: z.string() });
 export type TalkSummary = z.infer<typeof TalkSummary>;
+
+// A talk's highlight post for X, footer included.
+export const TalkPost = z.object({ id: z.number(), talk_id: z.number(), session_id: z.string(), text: z.string(), created_at: z.string() });
+export type TalkPost = z.infer<typeof TalkPost>;

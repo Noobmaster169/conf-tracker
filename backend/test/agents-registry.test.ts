@@ -3,15 +3,15 @@ import { expect, it } from "vitest";
 import { listSteps } from "../src/agents/prompts/registry";
 import { agentById, agentForKey, AGENTS } from "../src/agents/registry";
 import { ExtractConfig, NameConfig } from "../src/contracts";
-import { SummaryConfig, TrackConfig } from "../src/contracts-conference";
+import { PostConfig, SummaryConfig, TrackConfig } from "../src/contracts-conference";
 
-it("has the five agents, ids equal to their prompt directories", () => {
-  expect(AGENTS.map((a) => a.id)).toEqual(["track", "name", "extract", "summarize", "watch"]);
+it("has the six agents, ids equal to their prompt directories", () => {
+  expect(AGENTS.map((a) => a.id)).toEqual(["track", "name", "extract", "summarize", "post", "watch"]);
   for (const a of AGENTS) expect(listSteps()).toContain(a.id);
 });
 
 it("every setting of every video agent is owned by exactly one agent", () => {
-  for (const key of Object.keys({ ...ExtractConfig.parse({}), ...NameConfig.parse({}), ...TrackConfig.parse({}), ...SummaryConfig.parse({}) })) {
+  for (const key of Object.keys({ ...ExtractConfig.parse({}), ...NameConfig.parse({}), ...TrackConfig.parse({}), ...SummaryConfig.parse({}), ...PostConfig.parse({}) })) {
     expect(agentForKey(key)?.settingsScope, key).toBe("video");
     expect(AGENTS.filter((a) => a.settings && key in a.settings.shape).length, key).toBe(1);
   }
@@ -32,6 +32,8 @@ it("describes a call in one line", () => {
   expect(agentById("name")!.describe({ error: null, parsed: {} }, { ...none, named: [{ voice: "S2", name: "Kevin B." }, { voice: "S4", name: "Ana" }, { voice: "S5", name: "Li" }] })).toBe("Named S2 as Kevin B. and 2 more");
   expect(agentById("name")!.describe({ error: null, parsed: {} }, none)).toBe("No one named");
   expect(agentById("summarize")!.describe({ error: null, parsed: { headline: "Roadmap" } }, none)).toBe('Wrote "Roadmap"');
+  expect(agentById("post")!.describe({ error: null, parsed: { post: "🔴 Just wrapped: Fireside Chat with Anatoly\n\n• a\n• b" } }, none)).toBe('Posted "Fireside Chat with Anatoly"');
+  expect(agentById("post")!.describe({ error: null, parsed: null }, none)).toBe("Wrote a post");
   expect(agentById("watch")!.describe({ error: null, parsed: { cause: "The model login expired.", fix: "x" } }, none)).toBe("The model login expired.");
   expect(agentById("name")!.describe({ error: "speakers.0.confidence: Required", parsed: null }, none)).toBe("Failed: speakers.0.confidence: Required");
   expect(agentById("extract")!.describe({ error: "x".repeat(200), parsed: null }, none)).toBe(`Failed: ${"x".repeat(80)}`);
