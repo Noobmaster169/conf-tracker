@@ -4,12 +4,18 @@ import { z } from "zod";
 import type { AgentDefinition } from "../agents/agent";
 import { listVersions, loadPrompt, overrideFor, shippedPrompt } from "../agents/prompts/registry";
 import { agentById, AGENTS } from "../agents/registry";
-import { type ActivityLine, type AgentCard, type AgentDetail, type RunSummary, slowMsFor, type WatchSettings } from "../contracts-agents";
-import type { Queryable } from "../db";
+import { type ActivityLine, type AgentCard, type AgentDetail, type RunSummary, slowMsFor, WatchSettings } from "../contracts-agents";
+import { actorOf } from "../auth";
+import { atomic, type Queryable } from "../db";
+import { mergeDefault, mergeSession, runningSessions } from "../ingest/config-patch";
+import type { SessionRunner } from "../ingest/session-runner";
+import type { Hub } from "../realtime/hub";
 import * as agentEvents from "../repositories/agent-events";
 import * as runs from "../repositories/agent-runs";
 import * as incidents from "../repositories/incidents";
+import * as sessions from "../repositories/sessions";
 import * as settings from "../repositories/settings";
+import { configError } from "./sessions.routes";
 
 const STRIP = 24;
 const refuse = (res: Response, status: number, error: string): void => void res.status(status).json({ error });
@@ -81,10 +87,11 @@ export async function summarise(db: Queryable, agent: AgentDefinition, rows: run
   return rows.map(({ parsed, step: _step, ...row }) => ({ ...row, status: runs.statusOf(row, slowMs), result: agent.describe({ error: row.error, parsed }, effects.get(row.id)!) }));
 }
 
+const SettingsBody = z.object({ set: z.record(z.string(), z.unknown()), apply: z.enum(["all", "new", "running"]).default("all") });
 const CallsQuery = z.object({ session: z.uuid().optional(), before: z.coerce.number().int().positive().optional() });
 
 /** The agents: who they are, how each is doing, and what each did. Reads only in this file's first part; writes follow. */
-export function agentsRouter({ db }: { db: Queryable }): Router {
+export function agentsRouter({ db, hub, runner }: { db: Queryable; hub: Hub; runner: SessionRunner }): Router {
   const router = Router();
 
   router.get("/agents", async (_req, res, next) => {
@@ -122,6 +129,77 @@ export function agentsRouter({ db }: { db: Queryable }): Router {
       const slowMs = slowMsFor(await settings.watchSettings(db), agent.id);
       const rows = await runs.listRuns(db, { agentId: agent.id, sessionId: query.data.session, before: query.data.before, status, limit: limitOf(req.query.limit, 50, 200), slowMs });
       res.json(await summarise(db, agent, rows, slowMs));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Changes an agent's settings where asked: what new videos start from, the videos running now, or both. Everything is
+  // checked before anything is written, and the writes are one transaction: a refused change changes nothing.
+  router.patch("/agents/:id/settings", async (req, res, next) => {
+    try {
+      const agent = agentById(req.params.id);
+      if (!agent) return refuse(res, 404, "no such agent");
+      const body = SettingsBody.safeParse(req.body);
+      if (!body.success) return refuse(res, 400, `${body.error.issues[0]?.path.join(".") || "body"}: ${body.error.issues[0]?.message}`);
+      const { set, apply } = body.data;
+      const stranger = Object.keys(set).find((key) => !agent.settings || !(key in agent.settings.shape));
+      if (stranger) return refuse(res, 400, `${stranger} is not one of ${agent.name}'s settings`);
+      const actor = actorOf(req);
+
+      if (agent.settingsScope === "global") {
+        const stored = ((await settings.get<Record<string, unknown>>(db, "watcher"))?.value ?? {}) as Record<string, unknown>;
+        const merged = mergeDefault(stored, set);
+        const parsed = WatchSettings.safeParse(merged);
+        if (!parsed.success) return refuse(res, 400, `${parsed.error.issues[0]?.path.join(".")}: ${parsed.error.issues[0]?.message}`);
+        if (!listVersions(agent.id).includes(parsed.data.watch_prompt)) return refuse(res, 400, `no ${agent.id} prompt ${parsed.data.watch_prompt}`);
+        const changed = agentEvents.changeSummaries(stored, merged).length > 0;
+        if (changed) {
+          await atomic(db, async (tx) => {
+            await settings.put(tx, "watcher", merged);
+            await agentEvents.recordChanges(tx, stored, merged, { where: "for the whole app", actor });
+          });
+        }
+        return void res.json({ default_changed: changed, sessions: [], waits_for_next_start: [] });
+      }
+
+      // Every target with what it holds now and what it would hold; only those that would really change are written.
+      const storedDefault = await settings.defaultConfig(db);
+      const mergedDefault = mergeDefault(storedDefault, set);
+      const changeDefault = apply !== "running" && agentEvents.changeSummaries(storedDefault, mergedDefault).length > 0;
+      const videos = apply === "new" ? [] : await runningSessions(db, runner);
+      const targets = videos
+        .map((session) => ({ session, merged: mergeSession(session.config, set) }))
+        .filter(({ session, merged }) => agentEvents.changeSummaries(session.config, merged).length > 0);
+
+      const refusedDefault = changeDefault ? configError(mergedDefault) : null;
+      if (refusedDefault) return refuse(res, 400, refusedDefault);
+      for (const { session, merged } of targets) {
+        const refused = configError(merged);
+        if (refused) return refuse(res, 400, `${refused} (on ${session.title ?? session.id})`);
+      }
+      // A value no target would change still has to be one the schema takes.
+      const refusedAlone = configError(mergeDefault({}, set));
+      if (refusedAlone) return refuse(res, 400, refusedAlone);
+
+      const updated = await atomic(db, async (tx) => {
+        if (changeDefault) {
+          await settings.put(tx, "default_config", mergedDefault);
+          await agentEvents.recordChanges(tx, storedDefault, mergedDefault, { where: "for new videos", actor });
+        }
+        const written = [];
+        for (const { session, merged } of targets) {
+          written.push(await sessions.setConfig(tx, session.id, merged));
+          await agentEvents.recordChanges(tx, session.config, merged, { where: `on ${session.title ?? "an untitled video"}`, sessionId: session.id, actor });
+        }
+        return written;
+      });
+      for (const session of updated) hub.publish(session.id, { type: "session", data: session });
+      res.json({
+        default_changed: changeDefault,
+        sessions: updated.map((session) => ({ id: session.id, title: session.title })),
+        waits_for_next_start: updated.length > 0 ? Object.keys(set).filter((key) => agent.fixedAtStart.includes(key)) : [],
+      });
     } catch (error) {
       next(error);
     }
