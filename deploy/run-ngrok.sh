@@ -13,9 +13,10 @@
 #          (then add "web_addr: 127.0.0.1:4044" under agent: in that file)
 #          crontab -e -> @reboot setsid nohup /home/student/conf-tracker/run-ngrok.sh >/dev/null 2>&1 </dev/null &
 set -u
-# This account's static domain, optional: unset, ngrok serves the account's own dev domain. yt-stream's
-# default is deliberately not copied, so this tunnel can never claim another stack's domain.
-NGROK_DOMAIN="${NGROK_DOMAIN:-}"
+# This tunnel's own domain, always named. Since 2026-11-12 it runs on the paid account it shares with yt-engine,
+# whose agent serves that account's dev domain: a tunnel started here without --domain would claim yt-engine's
+# address, so the default must never be empty. yt-stream's default is deliberately not copied either.
+NGROK_DOMAIN="${NGROK_DOMAIN:-fiber-data.ngrok.app}"
 PORT="${PORT:-8094}"
 CONFIG="${CONFIG:-$HOME/conf-tracker/ngrok.yml}"
 LOG="${LOG:-$HOME/conf-tracker/ngrok.log}"

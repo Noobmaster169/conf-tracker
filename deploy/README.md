@@ -23,7 +23,10 @@ collide in speech's `data/` directory.
 Directories: `~/projects/conf-tracker` is the git clone (code); `~/conf-tracker` is the
 running stack (compose, `.env`, `ngrok.yml`, runner scripts, logs, the `.deployed` marker).
 
-Public URL of the api: `https://situation-courier-sulfate.ngrok-free.dev` (the dev domain of conf-tracker's own ngrok account).
+Public URL of the api: `https://fiber-data.ngrok.app`. Since 2026-11-12 the tunnel runs on the paid (Hobbyist) ngrok
+account it shares with yt-engine, whose agent serves that account's dev domain; `run-ngrok.sh` always names its own
+domain so it can never claim yt-engine's. The old free account (`situation-courier-sulfate.ngrok-free.dev`) ran out
+of bandwidth. A custom domain such as `data.fiber.ag` needs a higher ngrok plan than Hobbyist.
 `GET /health` needs no key; everything else needs `Authorization: Bearer <API_SHARED_SECRET>`.
 
 ## Without the box
@@ -115,12 +118,12 @@ Reach speech from a dev machine (it binds to the docker bridge, not loopback):
    `PG_PASSWORD` and `API_SHARED_SECRET` with `openssl rand -hex 32`, `ACCESS_PASSWORD`
    with any long string, and `CLAUDE_CODE_OAUTH_TOKEN` (the same subscription token as
    `~/yt-stream/.env`). `API_SHARED_SECRET` is also what the frontend sends.
-3. ngrok: its own account (each tunnel on the box has one). The standalone binary in
+3. ngrok: the account shared with yt-engine (see "Public URL" above). The standalone binary in
    `~/bin/ngrok` is already installed (not the snap; see `run-ngrok.sh`). Then
    `~/bin/ngrok config add-authtoken <token> --config ~/conf-tracker/ngrok.yml` and add
    `web_addr: 127.0.0.1:4044` under `agent:` in that file (4040, 4042 and 4043 belong to the
-   other tunnels). With `NGROK_DOMAIN` unset ngrok serves the account's own dev domain; read it from
-   `curl -s 127.0.0.1:4044/api/tunnels` and write it into "Public URL" above.
+   other tunnels). `run-ngrok.sh` serves `NGROK_DOMAIN` (default `fiber-data.ngrok.app`); check it with
+   `curl -s 127.0.0.1:4044/api/tunnels`.
 4. Copy `deploy/compose.yaml`, `run-ngrok.sh` and `auto-deploy.sh` into `~/conf-tracker/`,
    `chmod +x` the scripts, then `cd ~/conf-tracker && docker compose up -d --build`. The api's
    CMD runs the migrations before it listens. Then `git -C ~/projects/conf-tracker rev-parse HEAD > ~/conf-tracker/.deployed`.
