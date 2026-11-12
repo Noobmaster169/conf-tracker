@@ -61,6 +61,20 @@ The Watcher (`backend/src/ingest/watcher.ts`, rules in `watch-rules.ts`) passes 
 trouble by fixed rules, so it works with the model down, and asks the model only to say what is probably wrong with a
 new incident on a video.
 
+## Frames: the Gallery
+
+Pictures of the stage (`backend/src/frames/`, design: `docs/superpowers/specs/2026-11-13-frames-design.md`). The api
+grabs a frame of each running live video every `interval_s`, keeps one of each picture by code (no model calls), and
+uploads it to Cloudflare R2; browsers read the images from R2's public URL, so no image goes through ngrok or the relay.
+It needs the five `R2_*` values in the box's `.env`; without them it stays off and `/ops/frames` says `configured: false`.
+
+| Call | What it does |
+| --- | --- |
+| `GET /sessions/:id/frames?all=1`, `GET /talks/:id/frames` | A video's or a session's gallery, oldest first, without the hidden ones and the ones in a break (`all=1` shows those too). |
+| `PATCH /frames/:id` | `{ "hidden": true }` takes one out; `{ "block": true }` also keeps anything like it out of every gallery (a break card, a sponsor loop). |
+| `POST /sessions/:id/frames/fill` | Reads a recording whole and keeps its frames, in the background; `{ "from": 3600 }` starts there. A recorded video is filled by itself when it runs. |
+| `GET /ops/frames`, `PATCH /ops/frames` | Settings and what is being grabbed or filled now. `{ "set": { "fine_frac": 0.05 } }` keeps more slides; a null takes a key back to its default. Applies at the next grab. |
+
 ## Running it with no access to the box
 
 `CLAUDE.md` is the guide; `ops/ct` is the tool (`ops/ct help`). In short, with the same bearer key
