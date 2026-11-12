@@ -8,6 +8,7 @@ import { RetryableError, TerminalError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
 import type { Hub } from "./realtime/hub";
 import { adminRouter } from "./routes/admin.routes";
+import { agentsRouter } from "./routes/agents.routes";
 import { callsRouter } from "./routes/calls.routes";
 import { claimSearchRouter } from "./routes/claim-search.routes";
 import { claimsRouter } from "./routes/claims.routes";
@@ -59,6 +60,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(adminRouter(deps));
   app.use(correctionsRouter(deps));
   app.use(opsRouter(deps));
+  app.use(agentsRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.

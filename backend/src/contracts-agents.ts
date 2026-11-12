@@ -31,3 +31,56 @@ export const slowMsFor = (settings: WatchSettings, agentId: string): number => s
 /** What the Watcher answers about an incident. */
 export const WatchOutput = z.object({ cause: z.string().min(1), fix: z.string().min(1) });
 export type WatchOutput = z.infer<typeof WatchOutput>;
+
+export const AgentCard = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string(),
+  trigger: z.string(),
+  internal: z.boolean(),
+  /** What a video started now would use. */
+  prompt_version: z.string().nullable(),
+  model: z.string().nullable(),
+  status: z.enum(["ok", "failed", "slow", "idle"]),
+  last_run_at: z.string().nullable(),
+  /** Its last runs, at most 24, oldest first. */
+  recent: z.array(RunStatus),
+  open_incidents: z.number(),
+});
+export type AgentCard = z.infer<typeof AgentCard>;
+
+export const AgentSetting = z.object({ key: z.string(), value: z.unknown(), default: z.unknown(), fixed_at_start: z.boolean(), valid: z.boolean() });
+export const AgentInstructions = z.object({
+  version: z.string(),
+  source: z.enum(["file", "registered", "registered over the file"]),
+  model: z.string(),
+  in_use: z.boolean(),
+  /** False for a version the settings name but nobody has written. */
+  exists: z.boolean(),
+});
+export const AgentDetail = AgentCard.extend({
+  reads: z.array(z.string()),
+  writes: z.array(z.string()),
+  settings_scope: z.enum(["video", "global"]),
+  settings: z.array(AgentSetting),
+  instructions: z.array(AgentInstructions),
+});
+export type AgentDetail = z.infer<typeof AgentDetail>;
+
+/** One run in a list: no input and no output, and one line saying what came of it. */
+export const RunSummary = z.object({
+  id: z.number(),
+  session_id: z.string(),
+  session_title: z.string().nullable(),
+  prompt_version: z.string(),
+  model: z.string(),
+  window_t0: z.number(),
+  window_t1: z.number(),
+  attempt: z.number(),
+  latency_ms: z.number(),
+  error: z.string().nullable(),
+  status: RunStatus,
+  result: z.string(),
+  created_at: z.string(),
+});
+export type RunSummary = z.infer<typeof RunSummary>;

@@ -1,3 +1,4 @@
+import { WatchSettings } from "../contracts-agents";
 import type { Queryable } from "../db";
 
 export interface Setting<T> {
@@ -23,4 +24,11 @@ export async function put<T>(db: Queryable, key: string, value: T): Promise<Sett
 /** The config a new video starts from, under whatever the request itself sets. Empty until someone sets it. */
 export async function defaultConfig(db: Queryable): Promise<Record<string, unknown>> {
   return (await get<Record<string, unknown>>(db, "default_config"))?.value ?? {};
+}
+
+/** The Watcher's settings over their defaults; the defaults alone when what is stored cannot be read. */
+export async function watchSettings(db: Queryable): Promise<WatchSettings> {
+  const stored = (await get<unknown>(db, "watcher"))?.value;
+  const parsed = WatchSettings.safeParse(stored ?? {});
+  return parsed.success ? parsed.data : WatchSettings.parse({});
 }
