@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Feed, PersonCard, PersonDetail, TalkCard, TalkDetail, VideoCard } from "./views";
+import { Feed, Frame, PersonCard, PersonDetail, TalkCard, TalkDetail, VideoCard } from "./views";
 import { BackendError, get, PAGE_CACHE_S, parseAs, refusalMessage, request } from "./transport";
 
 export { FEED_CACHE_S } from "./transport";
@@ -41,4 +41,17 @@ export function getPerson(id: string): Promise<PersonDetail | null> {
 
 export function getTalk(id: string): Promise<TalkDetail | null> {
   return /^\d+$/.test(id) ? orNull(TalkDetail, `/talks/${id}`) : Promise.resolve(null);
+}
+
+/**
+ * A session's gallery, oldest first. Empty rather than an error: the dashboard ships before the api while a running video
+ * holds the api's deploy back, and a gallery that cannot load must not take the session page with it.
+ */
+export async function getTalkFrames(id: string): Promise<Frame[]> {
+  if (!/^\d+$/.test(id)) return [];
+  try {
+    return (await orNull(z.array(Frame), `/talks/${id}/frames`)) ?? [];
+  } catch {
+    return [];
+  }
 }

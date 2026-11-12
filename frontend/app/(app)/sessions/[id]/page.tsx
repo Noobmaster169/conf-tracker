@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Empty, LiveBadge, Page, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
+import { Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
-import { getTalk } from "@/lib/api-client";
+import { getTalk, getTalkFrames } from "@/lib/api-client";
 import { formatDay, formatT, plannedTime, plural, titleAndOrg } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -30,14 +31,20 @@ const NO_CLAIMS = {
 } as const;
 
 /** The sections of a session, Claims first. A new one is a new entry here and a branch below. */
-const TABS = ["claims", "summary", "post"] as const;
+const NO_FRAMES = {
+  upcoming: "This session has not been on stage yet. Pictures of the stage appear here while it runs.",
+  live: "On stage now. Pictures of the stage appear here as the slides and speakers change.",
+  ended: "No pictures were taken of this session.",
+} as const;
+
+const TABS = ["claims", "summary", "post", "gallery"] as const;
 type Tab = (typeof TABS)[number];
 const parseTab = (value: unknown): Tab => (TABS.includes(value as Tab) ? (value as Tab) : "claims");
 
 export default async function SessionPage({ params, searchParams }: PageProps<"/sessions/[id]">) {
   const { id } = await params;
   const tab = parseTab((await searchParams).tab);
-  const detail = await getTalk(id);
+  const [detail, frames] = await Promise.all([getTalk(id), getTalkFrames(id)]);
   if (!detail) notFound();
   const { talk, stage, summary, post, claims } = detail;
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
@@ -85,6 +92,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
             { href: `/sessions/${talk.id}`, label: "Claims", count: claims.length, current: tab === "claims" },
             { href: `/sessions/${talk.id}?tab=summary`, label: "Summary", current: tab === "summary" },
             { href: `/sessions/${talk.id}?tab=post`, label: "Post", current: tab === "post" },
+            { href: `/sessions/${talk.id}?tab=gallery`, label: "Gallery", count: frames.length, current: tab === "gallery" },
           ]}
         />
         {tab === "claims" &&
@@ -110,6 +118,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
             <Empty>{NO_SUMMARY[detail.status]}</Empty>
           ))}
         {tab === "post" && (post ? <PostCard text={post.text} /> : <Empty>{NO_POST[detail.status]}</Empty>)}
+        {tab === "gallery" && (frames.length > 0 ? <Gallery frames={frames} title={talk.title} /> : <Empty>{NO_FRAMES[detail.status]}</Empty>)}
       </div>
     </Page>
   );

@@ -47,6 +47,19 @@ export type TalkCard = z.infer<typeof TalkCard>;
 export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), post: TalkPost.nullable().default(null), claims: z.array(FeedItem) });
 export type TalkDetail = z.infer<typeof TalkDetail>;
 
+// A picture of the stage. The image is on Cloudflare R2, read by the browser straight from `url`, never through the api.
+export const Frame = z.object({
+  id: z.number(),
+  session_id: z.string(),
+  t: z.number(),
+  talk_id: z.number().nullable(),
+  url: z.string(),
+  thumb_url: z.string(),
+  width: z.number(),
+  height: z.number(),
+});
+export type Frame = z.infer<typeof Frame>;
+
 // conferences: from a visible schedule, a video the person was heard in, or a listing. Defaults so an older api still parses.
 export const PersonCard = z.object({ person: Person, claim_count: z.number(), talk_count: z.number(), last_seen: z.string().nullable(), conferences: z.array(z.string()).default([]) });
 export type PersonCard = z.infer<typeof PersonCard>;
