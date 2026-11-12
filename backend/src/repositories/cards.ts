@@ -140,15 +140,21 @@ interface PersonCardRow extends people.PersonRow {
  */
 export async function peopleCards(db: Queryable, id?: number, includeHidden = false): Promise<PersonCard[]> {
   const { rows } = await db.query<PersonCardRow>(
+    // `heard` resolves each claim's voice once, before it meets a person. Joined in one step, the planner paired every
+    // named voice with every claim of its video and scanned the merge chain for each pair (16M rows for 1k claims).
     `with recursive ${SURVIVOR_CTE},
-     said as (
-       select sv.person_id, count(*)::int as n, max(c.created_at) as last
+     heard as materialized (
+       select c.session_id, coalesce(r.cur, c.speaker_id) as speaker_id, c.created_at
        from claims c
        join sessions ss on ss.id = c.session_id and ss.replay_of is null
        left join stages sg on sg.id = ss.stage_id
        left join survivor r on r.session_id = c.session_id and r.raw_id = c.speaker_id
-       join speakers sv on sv.session_id = c.session_id and sv.speaker_id = coalesce(r.cur, c.speaker_id)
-       where c.status = 'ok' and sv.person_id is not null and not coalesce(sg.hidden, false)
+       where c.status = 'ok' and not coalesce(sg.hidden, false)
+     ),
+     said as (
+       select sv.person_id, count(*)::int as n, max(h.created_at) as last
+       from heard h join speakers sv on sv.session_id = h.session_id and sv.speaker_id = h.speaker_id
+       where sv.person_id is not null
        group by sv.person_id
      )
      select ${people.COLUMNS.split(", ").map((c) => `p.${c}`).join(", ")}, coalesce(said.n, 0) as claim_count, said.last as last_seen,
