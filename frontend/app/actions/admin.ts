@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+
+import { ACCESS_COOKIE, hasAccess } from "@/lib/access";
 
 import * as api from "@/lib/api-client";
 import { parseSpeakers } from "@/lib/speakers-text";
@@ -19,7 +22,14 @@ function back(form: FormData, fallback: string): string {
   return path.startsWith("/admin") ? path : fallback;
 }
 
+/** The site is public, so every admin action proves the password itself: an action can be posted from any page. */
+async function requireAdmin(form: FormData, fallback: string): Promise<void> {
+  if (await hasAccess((await cookies()).get(ACCESS_COOKIE)?.value, process.env.ACCESS_PASSWORD)) return;
+  redirect(`/login?next=${encodeURIComponent(back(form, fallback))}`);
+}
+
 async function run(form: FormData, fallback: string, done: string, work: () => Promise<string | void>): Promise<never> {
+  await requireAdmin(form, fallback);
   let target = back(form, fallback);
   try {
     target = (await work()) ?? target;

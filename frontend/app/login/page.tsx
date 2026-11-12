@@ -6,9 +6,9 @@ export default async function Login({ searchParams }: PageProps<"/login">) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
       <h1 className="text-[28px] font-bold tracking-tight">Conference Tracker</h1>
-      <p className="mb-6 mt-1 text-ink-soft">Enter the password to continue.</p>
+      <p className="mb-6 mt-1 text-ink-soft">Enter the admin password to continue.</p>
       <form action={unlock} className="flex gap-2">
-        <input type="hidden" name="next" value={safeNext(next)} />
+        <input type="hidden" name="next" value={safeNext(next ?? "/admin")} />
         <input name="password" type="password" required autoFocus autoComplete="current-password" aria-label="Password" placeholder="Password" className="field" />
         <button type="submit" className="btn">
           Enter
