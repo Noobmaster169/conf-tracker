@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Avatar } from "@/components/ui/avatar";
-import { Empty, LiveBadge, Page, Tabs } from "@/components/ui/bits";
+import { Empty, Page, StatusTag, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
 import { Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
@@ -59,7 +59,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
       </p>
       <h1 className="text-[32px] font-bold leading-tight tracking-tight">{talk.title}</h1>
       <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-ink-soft">
-        {detail.status === "live" && <LiveBadge label="On stage" />}
+        <StatusTag status={detail.status} liveLabel="On stage" />
         {when && <span>{when}</span>}
         <span className="capitalize">{talk.kind}</span>
         {detail.session_id && (

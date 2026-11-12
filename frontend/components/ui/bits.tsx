@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import type { ClaimKind } from "@/lib/api/schemas";
+import type { TalkStatus } from "@/lib/api/views";
 import { kindLabel } from "@/lib/kinds";
 
 /** The red mark of a stage that is live right now. */
@@ -10,6 +11,16 @@ export function LiveBadge({ label = "Live" }: { label?: string }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-live-soft px-2 py-0.5 text-xs font-semibold text-live">
       <span className="live-dot size-1.5 rounded-full bg-live" />
       {label}
+    </span>
+  );
+}
+
+/** Where a session stands, in one word: past, live or still to come. */
+export function StatusTag({ status, liveLabel }: { status: TalkStatus; liveLabel?: string }) {
+  if (status === "live") return <LiveBadge label={liveLabel} />;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status === "upcoming" ? "bg-accent-soft text-accent" : "bg-sunk text-ink-soft"}`}>
+      {status === "upcoming" ? "Upcoming" : "Past"}
     </span>
   );
 }

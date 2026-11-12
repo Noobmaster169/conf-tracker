@@ -1,19 +1,9 @@
 import Link from "next/link";
 
-import type { TalkCard, TalkStatus } from "@/lib/api/views";
+import type { TalkCard } from "@/lib/api/views";
 import { plannedTime } from "@/lib/format";
 
-import { LiveBadge } from "./bits";
-
-/** Where a session stands, in one word. */
-function StatusTag({ status }: { status: TalkStatus }) {
-  if (status === "live") return <LiveBadge />;
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status === "upcoming" ? "bg-accent-soft text-accent" : "bg-sunk text-ink-soft"}`}>
-      {status === "upcoming" ? "Upcoming" : "Past"}
-    </span>
-  );
-}
+import { StatusTag } from "./bits";
 
 /**
  * One line of a schedule: when, what, who, and whether it is past, live or still to come. A list that is not already
