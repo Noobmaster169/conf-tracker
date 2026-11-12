@@ -132,6 +132,7 @@ for i in rows:
   get) call GET "$1" | pretty ;;
   post | put | patch | delete) call "$(echo "$cmd" | tr a-z A-Z)" "$1" "${2-}" | pretty ;;
   sql) call POST /ops/sql "$(python3 -c 'import json, sys; print(json.dumps({"sql": sys.argv[1]}))' "$1")" | pretty ;;
+  sql-write) call POST /ops/sql-write "$(python3 -c 'import json, sys; print(json.dumps({"sql": sys.argv[1]}))' "$1")" | pretty ;;
   verbs) call GET /ops/jobs/verbs | pretty ;;
   job) # ct job VERB ['{"json":"args"}']: queues it and waits for the box, which looks every three minutes.
     verb="$1"
@@ -220,6 +221,7 @@ ops/ct: the live stack, through its api. What to use for what: CLAUDE.md at the 
   get PATH                       any GET: `get '/videos?all=1'`, `get /ops/prompts`, `get /ops/config`
   post|put|patch|delete PATH [JSON]  any write: `patch /sessions/ID/config '{"extract_prompt":"v6"}'`
   sql "select ..."               read-only SQL on the live database (500 rows at most)
+  sql-write "update ..."         ANY SQL on the live database, writes and schema changes included; nothing is refused
   verbs                          what the box can be asked to do
   job VERB [JSON]                asks the box and waits for its answer: `job logs '{"service":"llm-proxy"}'`
   wait-deploy [sha]              after a push: waits until the box runs it, or says why it does not

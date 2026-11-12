@@ -146,6 +146,29 @@ test("sql reads and cannot write", async () => {
   expect((await sql("select count(*)::int as n from settings where key = 'x'")).body.rows).toEqual([{ n: 0 }]);
 });
 
+test("sql-write runs anything, schema changes included, and answers per statement", async () => {
+  await inRollback(async (tx) => {
+    const app = createApp({ db: tx, hub: createHub(10), runner: runnerWith() });
+    const run = (text: string) => request(app).post("/ops/sql-write").set(auth).set("x-actor", "test").send({ sql: text });
+    expect((await request(app).post("/ops/sql-write").send({ sql: "select 1" })).status).toBe(401);
+    expect((await request(app).post("/ops/sql-write").set(auth).send({})).status).toBe(400);
+
+    const many = await run("create table sql_write_probe (n int); insert into sql_write_probe values (1), (2) returning n; update sql_write_probe set n = n + 10");
+    expect(many.status).toBe(200);
+    expect(many.body.results).toEqual([
+      { command: "CREATE", row_count: null, rows: [], truncated: false },
+      { command: "INSERT", row_count: 2, rows: [{ n: 1 }, { n: 2 }], truncated: false },
+      { command: "UPDATE", row_count: 2, rows: [], truncated: false },
+    ]);
+    expect((await run("select sum(n)::int as s from sql_write_probe")).body.results[0].rows).toEqual([{ s: 23 }]);
+    expect((await run("drop table sql_write_probe")).body.results[0].command).toBe("DROP");
+
+    const bad = await run("select * from no_such_table");
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/no_such_table/);
+  });
+});
+
 test("the api's own log lines are kept and filtered", async () => {
   const { childLogger, recentLogs } = await import("../src/lib/logger");
   void childLogger;

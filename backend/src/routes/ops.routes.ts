@@ -8,7 +8,7 @@ import { ExtractConfig, NameConfig, SummaryConfig, TrackConfig } from "../contra
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
 import { httpProbe, type Probe, proxyHealthUrl, speechHealthUrl } from "../lib/health";
-import { recentLogs } from "../lib/logger";
+import { childLogger, recentLogs } from "../lib/logger";
 import { mergeDefault, mergeSession } from "../ingest/config-patch";
 import type { Hub } from "../realtime/hub";
 import * as agentEvents from "../repositories/agent-events";
@@ -46,6 +46,7 @@ const SqlBody = z.object({ sql: z.string().min(1).max(20_000) });
 const ConfigBody = z.record(z.string(), z.unknown());
 
 const STARTED_AT = new Date();
+const log = childLogger({ module: "ops" });
 const refuse = (res: Response, status: number, error: string): void => void res.status(status).json({ error });
 
 /** Every setting a video's config can hold with its default, so nobody has to read the code to know the keys. */
@@ -67,6 +68,35 @@ async function readOnly(db: Queryable, sql: string): Promise<{ rows: unknown[]; 
     await client.query("rollback").catch(() => undefined);
     client.release();
   }
+}
+
+interface WriteResult {
+  command: string | null;
+  row_count: number | null;
+  rows: unknown[];
+  truncated: boolean;
+}
+
+/**
+ * Runs any SQL, writes and schema changes included, on its own connection with no time limit. Several statements in one
+ * text run as one transaction (Postgres' simple protocol), so one failing undoes the others unless the text has its own
+ * begin/commit. One result per statement.
+ */
+async function anyWrite(db: Queryable, sql: string): Promise<WriteResult[]> {
+  const LIMIT = 500;
+  const raw: unknown = db instanceof Pool ? await (async () => {
+    const client = await db.connect();
+    try {
+      return await client.query(sql);
+    } finally {
+      client.release();
+    }
+  })() : await db.query(sql);
+  const results = (Array.isArray(raw) ? raw : [raw]) as { command?: string; rowCount?: number | null; rows?: unknown[] }[];
+  return results.map((r) => {
+    const rows = r.rows ?? [];
+    return { command: r.command ?? null, row_count: r.rowCount ?? null, rows: rows.slice(0, LIMIT), truncated: rows.length > LIMIT };
+  });
 }
 
 /**
@@ -317,6 +347,27 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
         res.json(await readOnly(db, body.data.sql));
       } catch (error) {
         refuse(res, 400, error instanceof Error ? error.message : String(error));
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Any SQL at all, writes, deletes and schema changes included, for fixing what no route covers once nobody can reach
+  // the box. Nothing is refused: the bearer key is the only gate. Every statement is logged with who sent it.
+  router.post("/ops/sql-write", async (req, res, next) => {
+    try {
+      const body = SqlBody.safeParse(req.body);
+      if (!body.success) return refuse(res, 400, "sql: the statement(s) to run");
+      const actor = actorOf(req);
+      try {
+        const results = await anyWrite(db, body.data.sql);
+        log.warn({ actor, sql: body.data.sql, rows: results.map((r) => r.row_count) }, "sql-write");
+        res.json({ results });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn({ actor, sql: body.data.sql, error: message }, "sql-write failed");
+        refuse(res, 400, message);
       }
     } catch (error) {
       next(error);

@@ -70,6 +70,7 @@ new incident on a video.
 | `GET /ops/status` | The api, the model proxy, speech, model calls of the last hour, and the box's last report of itself: the commit deployed, containers, disk, GPU, log tails. |
 | `GET /ops/logs?limit=&level=&module=&contains=` | The api's own newest log lines. |
 | `POST /ops/sql` | `{ "sql": "select ..." }`, read-only, 500 rows at most. |
+| `POST /ops/sql-write` | `{ "sql": "..." }`, anything: writes, deletes, `create`/`alter`/`drop`. Nothing is refused and there is no time limit. Several statements in one text are one transaction. Answers `{ results: [{ command, row_count, rows, truncated }] }`, one per statement. Each call is logged (module `ops`) with its actor and SQL. |
 | `GET /ops/prompts`, `PUT /ops/prompts/:step/:version` | Every prompt version and where it comes from; registers one (`{ "text", "model"? }`) with no build. |
 | `GET /ops/config`, `PATCH /ops/config` | The config a new video starts from: every key with its default, and what is set over them. |
 | `PATCH /sessions/:id/config` | Changes a video's settings while it runs; its loops read them at their next run. A null value takes a key back to its default. |
