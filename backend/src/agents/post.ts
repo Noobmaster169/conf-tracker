@@ -37,6 +37,8 @@ export interface PostInput {
   claims: FeedItem[];
   /** The summary article in markdown. */
   summary: string;
+  /** How long the talk was on stage, in minutes; null when not known. */
+  minutes?: number | null;
 }
 
 /** The claims a post is chosen from: the most important first, then in the order they were said. */
@@ -51,13 +53,14 @@ function claimLine(claim: FeedItem): string {
 }
 
 /** The user message: the session, its claims, then the write-up. */
-export function renderPostInput({ stage, talk, claims, summary }: PostInput): string {
+export function renderPostInput({ stage, talk, claims, summary, minutes = null }: PostInput): string {
   const ranked = rankClaims(claims);
   const article = summary.length > MAX_SUMMARY_CHARS ? `${summary.slice(0, MAX_SUMMARY_CHARS)}\n[... the rest is left out for length ...]` : summary;
   return [
     `Conference: ${stage.conference}`,
     `Stage: ${stageLine(stage)}`,
     `Session: "${talk.title}" (${talk.kind})`,
+    minutes === null ? null : `Duration: ~${Math.max(1, Math.round(minutes))} minutes on stage`,
     talk.description ? `About: ${talk.description}` : null,
     `On stage: ${speakerList(talk)}`,
     "",

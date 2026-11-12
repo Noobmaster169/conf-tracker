@@ -88,8 +88,9 @@ describe("the post's answer", () => {
       const item = (claim: string, importance: number | null, t0: number) => ({ claim, importance, t0, kind: "fact", person: null, speaker_name: "Anatoly" }) as unknown as FeedItem;
       const ranked = rankClaims([item("a", 2, 10), item("b", 4, 50), item("c", null, 5), item("d", 4, 20)]);
       expect(ranked.map((c) => c.claim)).toEqual(["d", "b", "a", "c"]);
-      const input = renderPostInput({ stage, talk, claims: [item("small", 1, 1), item("big", 4, 2)], summary: "# The article" });
-      expect(input).toContain('Conference: Accelerate USA\nStage: Accelerate USA, Main stage\nSession: "Fireside Chat: Anatoly Yakovenko" (fireside)');
+      const input = renderPostInput({ stage, talk, claims: [item("small", 1, 1), item("big", 4, 2)], summary: "# The article", minutes: 22.6 });
+      expect(input).toContain('Conference: Accelerate USA\nStage: Accelerate USA, Main stage\nSession: "Fireside Chat: Anatoly Yakovenko" (fireside)\nDuration: ~23 minutes on stage');
+      expect(renderPostInput({ stage, talk, claims: [], summary: "x" })).not.toContain("Duration");
       expect(input).toContain("On stage: Anatoly Yakovenko (Co-Founder, Solana Labs); Alejandra Martinez (Partner, Foundation Capital) [moderator]");
       expect(input).toContain("Claims (2, most important first):\n- [importance 4, fact] big (Anatoly)\n- [importance 1, fact] small (Anatoly)");
       expect(input).toContain("Write-up:\n# The article");
@@ -115,6 +116,7 @@ describe("the Poster", () => {
       expect(request.model).toBe("opus");
       expect(request.system).toContain("🔴 Just wrapped");
       expect(request.user).toContain("Solana Mobile has sold over 150,000 units.");
+      expect(request.user).toContain("Duration: ~10 minutes on stage");
       expect(request.user).toContain("Smartphones are the final interface.");
       expect(request.user).not.toContain("Said after the talk ended.");
       expect(request.user).toContain('He said "don\'t really work".');

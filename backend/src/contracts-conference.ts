@@ -99,7 +99,7 @@ export type SummaryConfig = z.infer<typeof SummaryConfig>;
 export const PostConfig = z.object({
   post: z.boolean().default(true),
   post_model: z.string().min(1).default("opus"),
-  post_prompt: z.string().regex(/^v\d+$/).default("v1"),
+  post_prompt: z.string().regex(/^v\d+$/).default("v2"),
   // Added under every post, after a blank line, by the code and not the model, so it is always exactly this.
   post_footer: z.string().max(500).default("Real-time Breakpoint Alpha streamed at: https://breakpoint.fiber.ag"),
 });

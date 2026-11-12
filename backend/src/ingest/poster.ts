@@ -32,8 +32,10 @@ export function createPoster({ db, llm }: { db: Queryable; llm: LlmClient }): Wr
       const claims = await feed.ofTalkInVideo(db, sessionId, talkId);
       const stretches = await spans.forTalk(db, sessionId, talkId);
       const window = { t0: stretches[0]?.t0 ?? 0, t1: Math.max(...stretches.map((s) => s.t1 ?? s.t0), 0) };
+      // A stretch still open has no end yet; it counts for nothing rather than a guess.
+      const minutes = stretches.length > 0 ? stretches.reduce((n, s) => n + Math.max(0, (s.t1 ?? s.t0) - s.t0), 0) / 60 : null;
       const prompt = { ...loadPrompt("post", config.post_prompt), model: config.post_model };
-      return await runPost({ db, llm, sessionId, prompt }, { stage, talk, claims, summary: summary.summary.content, window, footer: config.post_footer });
+      return await runPost({ db, llm, sessionId, prompt }, { stage, talk, claims, summary: summary.summary.content, minutes, window, footer: config.post_footer });
     } catch (error) {
       log.error({ sessionId, talkId, err: error instanceof Error ? error.message : String(error) }, "post failed");
       return null;
