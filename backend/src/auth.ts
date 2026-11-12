@@ -19,3 +19,13 @@ export function requireCaller(req: Request, res: Response, next: NextFunction): 
   }
   next();
 }
+
+/**
+ * Who says they are making this change: the `x-actor` header ("admin", "claude-code", anything). There is one shared
+ * key, so this is a label for the record of changes, not a proof of anything.
+ */
+export function actorOf(req: Request): string {
+  const header = req.headers["x-actor"];
+  const value = (Array.isArray(header) ? header[0] : header)?.trim().slice(0, 40);
+  return value || "unknown";
+}

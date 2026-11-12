@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { z } from "zod";
 
 import { listSteps, listVersions, loadPrompt, overrideFor, setOverrides, shippedPrompt } from "../agents/prompts/registry";
+import { actorOf } from "../auth";
 import { ExtractConfig, NameConfig, SummaryConfig, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
@@ -10,6 +11,7 @@ import { httpProbe, type Probe, proxyHealthUrl, speechHealthUrl } from "../lib/h
 import { recentLogs } from "../lib/logger";
 import { replayConfig } from "../lib/replay-config";
 import type { Hub } from "../realtime/hub";
+import * as agentEvents from "../repositories/agent-events";
 import * as jobs from "../repositories/ops-jobs";
 import * as promptOverrides from "../repositories/prompt-overrides";
 import * as sessions from "../repositories/sessions";
@@ -233,10 +235,16 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
       // The pipeline fills {{schema}} into every prompt that has it; a text without the slot gets answers it cannot read.
       if (newest.text.includes("{{schema}}") && !body.data.text.includes("{{schema}}")) return refuse(res, 400, "text: this step's prompts carry a {{schema}} slot; keep it");
       const maxTokens = body.data.max_tokens ?? shipped?.maxTokens ?? newest.maxTokens;
+      const replaced = overrideFor(step, version);
       const saved = await promptOverrides.put(db, {
         step, version, model: body.data.model ?? shipped?.model ?? newest.model, text: body.data.text.trim(), ...(maxTokens === undefined ? {} : { maxTokens }),
       });
       setOverrides(await promptOverrides.list(db));
+      // A registered version can be written over in place, so the record keeps the text that was there.
+      await agentEvents.add(db, {
+        agentId: step, kind: "change", actor: actorOf(req),
+        summary: `Instructions ${version} ${replaced ? "overwritten" : "registered"}`, data: replaced ? { before: replaced.text } : {},
+      });
       res.json({ ...saved, registered: true });
     } catch (error) {
       next(error);
@@ -247,6 +255,7 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
     try {
       if (!(await promptOverrides.remove(db, req.params.step, req.params.version))) return refuse(res, 404, "no registered prompt with that step and version");
       setOverrides(await promptOverrides.list(db));
+      await agentEvents.add(db, { agentId: req.params.step, kind: "change", actor: actorOf(req), summary: `Instructions ${req.params.version} handed back to the file` });
       res.status(204).end();
     } catch (error) {
       next(error);
@@ -267,11 +276,14 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
     try {
       const body = ConfigBody.safeParse(req.body);
       if (!body.success) return refuse(res, 400, "body: expected an object of settings");
-      const merged = replayConfig(await settings.defaultConfig(db), 0, body.data);
+      const stored = await settings.defaultConfig(db);
+      const merged = replayConfig(stored, 0, body.data);
       delete merged.speed;
       const refused = configError(merged);
       if (refused) return refuse(res, 400, refused);
-      res.json({ code_defaults: configDefaults(), set: (await settings.put(db, "default_config", merged)).value });
+      const saved = (await settings.put(db, "default_config", merged)).value;
+      await agentEvents.recordChanges(db, stored, merged, { where: "for new videos", actor: actorOf(req) });
+      res.json({ code_defaults: configDefaults(), set: saved });
     } catch (error) {
       next(error);
     }
@@ -291,6 +303,7 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
       const refused = configError(merged);
       if (refused) return refuse(res, 400, refused);
       const updated = await sessions.setConfig(db, session.id, merged);
+      await agentEvents.recordChanges(db, session.config, merged, { where: `on ${session.title ?? "an untitled video"}`, sessionId: session.id, actor: actorOf(req) });
       hub.publish(session.id, { type: "session", data: updated });
       res.json(updated);
     } catch (error) {

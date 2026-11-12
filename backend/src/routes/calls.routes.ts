@@ -5,6 +5,7 @@ import { agentById } from "../agents/registry";
 import { slowMsFor } from "../contracts-agents";
 import type { LlmCall } from "../contracts";
 import type { Queryable } from "../db";
+import * as agentEvents from "../repositories/agent-events";
 import * as runs from "../repositories/agent-runs";
 import * as calls from "../repositories/calls";
 import * as claims from "../repositories/claims";
@@ -39,7 +40,7 @@ export function callsRouter({ db }: { db: Queryable }): Router {
         result: agent ? agent.describe(call, effects) : call.error ? `Failed: ${call.error.slice(0, 80)}` : "Answered",
         status: runs.statusOf(call, slowMsFor(await settings.watchSettings(db), call.step)),
         attempts,
-        events: [],
+        events: await agentEvents.list(db, { callId: call.id, limit: 50 }),
       });
     } catch (error) {
       next(error);

@@ -107,3 +107,28 @@ export const Incident = z.object({
   resolved_at: z.string().nullable(),
 });
 export type Incident = z.infer<typeof Incident>;
+
+/** Something done to an agent, or tried on one of its calls: a change of its instructions or settings, or a run again. */
+export const AgentEvent = z.object({
+  id: z.number(),
+  agent_id: z.string(),
+  session_id: z.string().nullable(),
+  call_id: z.number().nullable(),
+  kind: z.enum(["change", "rerun"]),
+  summary: z.string(),
+  data: z.unknown(),
+  actor: z.string(),
+  created_at: z.string(),
+});
+export type AgentEvent = z.infer<typeof AgentEvent>;
+
+/** One line of an agent's activity: a run it made, or something done to it. */
+export const ActivityLine = z.object({
+  at: z.string(),
+  kind: z.enum(["call", "change", "rerun"]),
+  summary: z.string(),
+  actor: z.string().nullable(),
+  call_id: z.number().nullable(),
+  status: RunStatus.nullable(),
+});
+export type ActivityLine = z.infer<typeof ActivityLine>;

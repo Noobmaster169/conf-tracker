@@ -51,6 +51,8 @@ export interface ListRuns {
   status?: "failed" | "slow";
   /** Runs older than this call id. */
   before?: number;
+  /** Runs made before this time. */
+  beforeTime?: string;
   limit: number;
   slowMs: number;
 }
@@ -65,6 +67,7 @@ export async function listRuns(db: Queryable, opts: ListRuns): Promise<RunRow[]>
   };
   if (opts.sessionId) add("c.session_id = ?", opts.sessionId);
   if (opts.before) add("c.id < ?", opts.before);
+  if (opts.beforeTime) add("c.created_at < ?::timestamptz", opts.beforeTime);
   if (opts.status === "failed") where.push("c.error is not null");
   if (opts.status === "slow") add("c.error is null and c.latency_ms > ?", opts.slowMs);
   values.push(opts.limit);

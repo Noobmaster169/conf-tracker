@@ -4,8 +4,9 @@ import { z } from "zod";
 import type { AgentDefinition } from "../agents/agent";
 import { listVersions, loadPrompt, overrideFor, shippedPrompt } from "../agents/prompts/registry";
 import { agentById, AGENTS } from "../agents/registry";
-import { type AgentCard, type AgentDetail, type RunSummary, slowMsFor, type WatchSettings } from "../contracts-agents";
+import { type ActivityLine, type AgentCard, type AgentDetail, type RunSummary, slowMsFor, type WatchSettings } from "../contracts-agents";
 import type { Queryable } from "../db";
+import * as agentEvents from "../repositories/agent-events";
 import * as runs from "../repositories/agent-runs";
 import * as incidents from "../repositories/incidents";
 import * as settings from "../repositories/settings";
@@ -121,6 +122,28 @@ export function agentsRouter({ db }: { db: Queryable }): Router {
       const slowMs = slowMsFor(await settings.watchSettings(db), agent.id);
       const rows = await runs.listRuns(db, { agentId: agent.id, sessionId: query.data.session, before: query.data.before, status, limit: limitOf(req.query.limit, 50, 200), slowMs });
       res.json(await summarise(db, agent, rows, slowMs));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // What it did and what was done to it, in one line of time: its runs and its events, newest first.
+  router.get("/agents/:id/activity", async (req, res, next) => {
+    try {
+      const agent = agentById(req.params.id);
+      if (!agent) return refuse(res, 404, "no such agent");
+      const before = typeof req.query.before === "string" && !Number.isNaN(Date.parse(req.query.before)) ? new Date(req.query.before).toISOString() : undefined;
+      const limit = limitOf(req.query.limit, 50, 200);
+      const slowMs = slowMsFor(await settings.watchSettings(db), agent.id);
+      const [made, done] = await Promise.all([
+        summarise(db, agent, await runs.listRuns(db, { agentId: agent.id, beforeTime: before, limit, slowMs }), slowMs),
+        agentEvents.list(db, { agentId: agent.id, before, limit }),
+      ]);
+      const lines: ActivityLine[] = [
+        ...made.map((run) => ({ at: run.created_at, kind: "call" as const, summary: run.result, actor: null, call_id: run.id, status: run.status })),
+        ...done.map((event) => ({ at: event.created_at, kind: event.kind, summary: event.summary, actor: event.actor, call_id: event.call_id, status: null })),
+      ];
+      res.json(lines.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, limit));
     } catch (error) {
       next(error);
     }
