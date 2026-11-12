@@ -142,3 +142,17 @@ export const SettingsResult = z.object({
   waits_for_next_start: z.array(z.string()),
 });
 export type SettingsResult = z.infer<typeof SettingsResult>;
+
+export const Rerun = z.object({
+  id: z.number(),
+  call_id: z.number(),
+  status: z.enum(["pending", "done", "failed"]),
+  prompt_version: z.string(),
+  model: z.string(),
+  output: z.string().nullable(),
+  parsed_ok: z.boolean().nullable(),
+  error: z.string().nullable(),
+  latency_ms: z.number().nullable(),
+  note: z.string(),
+});
+export type Rerun = z.infer<typeof Rerun>;

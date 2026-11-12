@@ -1,5 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
+
+import { ACCESS_COOKIE, hasAccess } from "@/lib/access";
 import { run, text } from "@/lib/admin-action";
 import { changedSettings, nextVersion, settingsDone } from "@/lib/agent-forms";
 import * as api from "@/lib/api-client";
@@ -50,4 +53,17 @@ export async function saveSettingsAction(form: FormData): Promise<void> {
     const apply = text(form, "apply");
     done = settingsDone(await api.patchSettings(agent.id, set, APPLY.has(apply) ? (apply as api.Apply) : "all"));
   });
+}
+
+/**
+ * Starts a rerun and answers with it, for the call window to follow. Called from the page's own code, not posted as a
+ * form, so it answers instead of sending the reader anywhere; it proves the password itself like every admin action.
+ */
+export async function startRerunAction(callId: number, version: string, model: string): Promise<{ rerun: api.Rerun } | { error: string }> {
+  if (!(await hasAccess((await cookies()).get(ACCESS_COOKIE)?.value, process.env.ACCESS_PASSWORD))) return { error: "Sign in to the admin area first." };
+  try {
+    return { rerun: await api.startRerun(callId, { prompt_version: version, model }) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "That did not work" };
+  }
 }

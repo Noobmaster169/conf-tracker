@@ -7,6 +7,7 @@ import { CallWindow } from "@/components/agents/call-window";
 import { IncidentBanners } from "@/components/agents/incident-banner";
 import { IncidentList } from "@/components/agents/incident-list";
 import { Instructions, InstructionsEditor, InstructionsWindow } from "@/components/agents/instructions";
+import { Rerun } from "@/components/agents/rerun";
 import { RunStrip } from "@/components/agents/run-strip";
 import { Settings } from "@/components/agents/settings-form";
 import { Notice, Panel } from "@/components/admin/parts";
@@ -167,7 +168,22 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
       {instructionsView && instructionsView !== "edit" && promptText && (
         <InstructionsWindow prompt={promptText} source={agent.instructions.find((i) => i.version === promptText.version)?.source ?? "file"} closeHref={href({ instructions: null })} />
       )}
-      {opened && <CallWindow data={opened} videoTitle={runs.find((run) => run.session_id === opened.call.session_id)?.session_title ?? null} closeHref={href({ call: null })} now={now} />}
+      {opened && (
+        <CallWindow data={opened} videoTitle={runs.find((run) => run.session_id === opened.call.session_id)?.session_title ?? null} closeHref={href({ call: null })} now={now}>
+          {agent.id === "summarize" ? (
+            <p className="mt-6 border-t border-line pt-5 text-[13px] text-ink-soft">
+              To write this summary again, open the session&apos;s stage under Stages and videos and use &quot;Write the summary again&quot;.
+            </p>
+          ) : (
+            (() => {
+              const versions = agent.instructions.filter((i) => i.exists).map((i) => i.version);
+              const models = [...new Set([...(agent.model ? [agent.model] : []), "haiku", "sonnet", "opus"])];
+              const version = versions.includes(opened.call.prompt_version) ? opened.call.prompt_version : (versions[0] ?? opened.call.prompt_version);
+              return <Rerun key={opened.call.id} callId={opened.call.id} versions={versions} models={models} version={version} model={models[0]!} stored={opened.call.output} />;
+            })()
+          )}
+        </CallWindow>
+      )}
     </Page>
   );
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ActivityLine, AgentCard, AgentDetail, CallWindow, Incident, OpsStatus, PromptText, RunSummary, SettingsResult } from "./agent-schemas";
+import { ActivityLine, AgentCard, AgentDetail, CallWindow, Incident, OpsStatus, PromptText, Rerun, RunSummary, SettingsResult } from "./agent-schemas";
 import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
 
 export * from "./agent-schemas";
@@ -84,4 +84,12 @@ export type Apply = "all" | "new" | "running";
 
 export function patchSettings(id: string, set: Record<string, unknown>, apply: Apply): Promise<SettingsResult> {
   return send(SettingsResult, "PATCH", `/agents/${encodeURIComponent(id)}/settings`, { set, apply });
+}
+
+export function startRerun(callId: number, body: { prompt_version?: string; model?: string }): Promise<Rerun> {
+  return send(Rerun, "POST", `/calls/${callId}/rerun`, body);
+}
+
+export function getRerun(id: number): Promise<Rerun | null> {
+  return getOrNull(Rerun, `/reruns/${id}`, "GET /reruns/:id");
 }
