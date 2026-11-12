@@ -16,9 +16,31 @@ function config(): { baseUrl: string; secret: string } {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), secret };
 }
 
-export async function request(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+/**
+ * The tag on every shared read, so an admin write can clear them all at once (`updateTag(PUBLIC_TAG)`).
+ * A read the pipeline changes (a new claim) shows up when its window runs out.
+ */
+export const PUBLIC_TAG = "public";
+
+/** How long a public page's data is shared between visitors, and the Monitor's poll. */
+export const PAGE_CACHE_S = 15;
+export const FEED_CACHE_S = 5;
+
+/**
+ * A read every visitor sees the same, shared through Vercel's data cache for `seconds`: however many people open a
+ * page, the box answers it once per window. Without it a request is never cached. Admin reads and the live video
+ * stay uncached.
+ */
+export type Shared = { shared?: number };
+
+/** The fetch options for a read: shared for a window, or never stored. */
+export function cacheOptions(shared: number | undefined): Pick<RequestInit, "cache" | "next"> {
+  return shared ? { next: { revalidate: shared, tags: [PUBLIC_TAG] } } : { cache: "no-store" };
+}
+
+export async function request(path: string, init: RequestInit & { timeoutMs?: number } & Shared = {}): Promise<Response> {
   const { baseUrl, secret } = config();
-  const { timeoutMs = 15_000, headers, signal, ...rest } = init;
+  const { timeoutMs = 15_000, headers, signal, shared, ...rest } = init;
   return fetch(`${baseUrl}${path}`, {
     ...rest,
     headers: {
@@ -29,7 +51,7 @@ export async function request(path: string, init: RequestInit & { timeoutMs?: nu
       ...(headers as Record<string, string> | undefined),
     },
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
-    cache: "no-store",
+    ...cacheOptions(shared),
   });
 }
 
@@ -59,8 +81,8 @@ export async function refusalMessage(response: Response): Promise<string> {
   return typeof message === "string" ? message : `Backend returned ${response.status}`;
 }
 
-export async function get<T>(schema: z.ZodType<T>, path: string): Promise<T> {
-  const response = await request(path);
+export async function get<T>(schema: z.ZodType<T>, path: string, shared?: number): Promise<T> {
+  const response = await request(path, { shared });
   if (!response.ok) throw new BackendError(await refusalMessage(response), response.status);
   return parseAs(schema, response, `GET ${path}`);
 }

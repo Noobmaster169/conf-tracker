@@ -1,30 +1,35 @@
 import { z } from "zod";
 
 import { Feed, PersonCard, PersonDetail, TalkCard, TalkDetail, VideoCard } from "./views";
-import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
+import { BackendError, get, PAGE_CACHE_S, parseAs, refusalMessage, request } from "./transport";
 
-/** What each page opens on. Read-only. */
+export { FEED_CACHE_S } from "./transport";
+
+/** What each page opens on. Read-only. The public ones are shared between visitors for a few seconds (transport.ts). */
 
 /** `all` is for the admin area: it adds what belongs to hidden stages. */
 export function listVideos(all = false): Promise<VideoCard[]> {
-  return get(z.array(VideoCard), all ? "/videos?all=1" : "/videos");
+  return all ? get(z.array(VideoCard), "/videos?all=1") : get(z.array(VideoCard), "/videos", PAGE_CACHE_S);
 }
 
-/** GET /feed; the query string passes through and the backend validates it. */
-export function getFeed(query = ""): Promise<Feed> {
-  return get(Feed, query ? `/feed?${query}` : "/feed");
+/**
+ * GET /feed; the query string passes through and the backend validates it. `shared` is for the Monitor, whose tabs
+ * all poll the same thing; a video page reads it fresh, beside its uncached snapshot.
+ */
+export function getFeed(query = "", shared?: number): Promise<Feed> {
+  return get(Feed, query ? `/feed?${query}` : "/feed", shared);
 }
 
 export function listPeople(all = false): Promise<PersonCard[]> {
-  return get(z.array(PersonCard), all ? "/people?all=1" : "/people");
+  return all ? get(z.array(PersonCard), "/people?all=1") : get(z.array(PersonCard), "/people", PAGE_CACHE_S);
 }
 
 export function listTalks(): Promise<TalkCard[]> {
-  return get(z.array(TalkCard), "/talks");
+  return get(z.array(TalkCard), "/talks", PAGE_CACHE_S);
 }
 
 async function orNull<T>(schema: z.ZodType<T>, path: string): Promise<T | null> {
-  const response = await request(path);
+  const response = await request(path, { shared: PAGE_CACHE_S });
   if (response.status === 404) return null;
   if (!response.ok) throw new BackendError(await refusalMessage(response), response.status);
   return parseAs(schema, response, `GET ${path}`);

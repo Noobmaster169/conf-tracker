@@ -1,10 +1,11 @@
 import "server-only";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { ACCESS_COOKIE, hasAccess } from "@/lib/access";
+import { PUBLIC_TAG } from "@/lib/api/transport";
 
 /**
  * What every admin form action is built on. An action that fails sends the reader back to the page they were on with
@@ -45,6 +46,8 @@ export async function run(form: FormData, fallback: string, done: string | (() =
   } catch (error) {
     redirect(withParam(back(form, fallback), "error", error instanceof Error ? error.message : "That did not work"));
   }
+  // The public pages share their data for a few seconds; a change made here shows on the next load, not after it.
+  updateTag(PUBLIC_TAG);
   revalidatePath("/", "layout");
   redirect(withParam(target, "done", typeof done === "function" ? done() : done));
 }
