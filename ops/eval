@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Judges an agent change on data prod already has, without touching prod. For Claude Code sessions.
+#
+#   ops/eval pull                          copy prod's database (over SSH, no ngrok) into the local ct_eval database
+#   ops/eval list                          the videos in ct_eval, and the variants made from them
+#   ops/eval run extract SESSION [opts]    run one agent again over a stored video; writes a variant video in ct_eval
+#   ops/eval report A [B]                  compare two videos' results (B defaults to A's original), as markdown
+#
+# run options: --prompt v6  --model sonnet  --set key=value (repeatable)  --from S --to S  --label text
+#   extract   re-extracts claims from the stored transcript (names and timeline copied from the original)
+#   summarize writes every talk's summary again from the original's timeline
+#   track     reads what was on stage again (no summaries)
+#   name      names the voices again
+#   all       track, name and extract together on one clock, then summarize: the whole pipeline after speech
+#
+# A prompt version is read from backend/src/agents/prompts/<step>/vN.md on this machine: write the file, run it.
+# Models go through the box's llm-proxy over an SSH tunnel (127.0.0.1:4013): the same login and models as live, so a
+# long run shares live's quota; keep runs short (--from/--to) while a video is live. EVAL_LLM=local uses the local
+# proxy (compose.local.yaml, 4003) instead, which needs CLAUDE_CODE_OAUTH_TOKEN in backend/.env.
+# ct_eval is throwaway: a pull replaces all of it.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BOX="$ROOT/../vps/monash.sh"
+LOCAL_PG=conf-tracker-postgres-1
+EVAL_DB=ct_eval
+
+local_psql() { docker exec -i "$LOCAL_PG" psql -U postgres -v ON_ERROR_STOP=1 "$@"; }
+
+ensure_local() {
+  docker inspect -f '{{.State.Running}}' "$LOCAL_PG" 2>/dev/null | grep -q true \
+    || (cd "$ROOT/backend" && docker compose -f compose.local.yaml up -d postgres >/dev/null)
+}
+
+ensure_proxy() {
+  if [ "${EVAL_LLM:-box}" = box ]; then
+    if ! curl -s -m 3 127.0.0.1:4013/healthz >/dev/null; then
+      local ip
+      ip="$(timeout 30 "$BOX" 'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" conf-tracker-llm-proxy-1')"
+      "$BOX" -f -N -o ExitOnForwardFailure=yes -L "4013:$ip:4000"
+    fi
+    export LLM_PROXY_URL=http://127.0.0.1:4013
+  else
+    curl -s -m 3 127.0.0.1:4003/healthz >/dev/null \
+      || (cd "$ROOT/backend" && docker compose -f compose.local.yaml up -d llm-proxy >/dev/null && sleep 3)
+    export LLM_PROXY_URL=http://127.0.0.1:4003
+  fi
+}
+
+tsx() { (cd "$ROOT/backend" && PG_DATABASE=$EVAL_DB LOG_LEVEL="${LOG_LEVEL:-warn}" node --env-file-if-exists=.env --import tsx scripts/eval.ts "$@"); }
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  pull)
+    ensure_local
+    dump="$(mktemp)"
+    trap 'rm -f "$dump"' EXIT
+    echo "dumping prod (no event log or photos)..."
+    timeout 600 "$BOX" 'cd ~/conf-tracker && docker compose exec -T postgres pg_dump -U postgres -d conf_tracker -Fc -Z6 --no-owner --no-privileges --exclude-table-data=events --exclude-table-data=agent_events --exclude-table-data=person_photos' >"$dump"
+    echo "got $(du -h "$dump" | cut -f1); restoring into $EVAL_DB..."
+    local_psql -q -c "drop database if exists $EVAL_DB with (force)" -c "create database $EVAL_DB"
+    docker exec -i "$LOCAL_PG" pg_restore -U postgres -d "$EVAL_DB" --no-owner --no-privileges --exit-on-error <"$dump"
+    local_psql -d "$EVAL_DB" -q -c "alter table sessions add column if not exists eval jsonb"
+    local_psql -d "$EVAL_DB" -At -c "select 'pulled ' || count(*) || ' videos, ' || (select count(*) from segments) || ' transcript segments, ' || (select count(*) from claims) || ' claims' from sessions"
+    ;;
+  list | run | report)
+    ensure_local
+    [ "$cmd" = run ] && ensure_proxy
+    tsx "$cmd" "$@"
+    ;;
+  *)
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+esac

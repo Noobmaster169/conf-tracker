@@ -40,6 +40,25 @@ Every write says who made it (`ops/ct` sends `x-actor: claude-code`), and an age
 | A container is stuck, a token expired, the disk is full | `ops/ct verbs`, then `ops/ct job ...` | Depends on the verb; it says |
 | Anything else on the box | A one-shot script, `deploy/ops.d/README.md` | Whatever the script does |
 
+## Judging an agent change before it ships: `ops/eval`
+
+Run an agent again over a video prod already heard, without touching prod and without speech: a new prompt version,
+model or setting, or a new agent, judged on real transcripts in minutes.
+
+- `ops/eval pull` copies prod's database over SSH (`../vps/monash.sh`, no ngrok) into the local `ct_eval` database.
+  It is throwaway: a pull replaces it, variants included.
+- `ops/eval run extract SESSION --prompt v6 --from 1800 --to 2400` makes a variant video in `ct_eval`: the original's
+  transcript, plus what the agent under test does not produce itself (names, the timeline), then the agent on stream
+  time as fast as the model answers. Agents: `extract`, `summarize`, `track`, `name`, `all` (the whole pipeline after
+  speech). A version is read from `backend/src/agents/prompts/<step>/vN.md` on this machine, so write the file and run.
+- `ops/eval report VARIANT [OTHER]` gives counts, call stats and the results side by side, as markdown. The prod side
+  ran live, with the names and timeline it had at the time, so for a clean A/B run the current version as a variant too
+  and compare the two variants.
+- Models go through the box's llm-proxy over an SSH tunnel: live's quota. Keep runs to a stretch (`--from/--to`)
+  while a video is live; 10 minutes of extraction is about 3 minutes and 20 calls.
+- A new agent: write its run over the database (as the loops in `backend/src/ingest/` are), add it to
+  `backend/scripts/eval.ts`, and judge it on stored videos before it ever runs live.
+
 A prompt registered through the api lives in the database. Also commit it as
 `backend/src/agents/prompts/<step>/vN.md` so the repo stays the record; the registered copy wins while both exist, and
 `ops/ct delete /ops/prompts/<step>/vN` hands it back to the file.
