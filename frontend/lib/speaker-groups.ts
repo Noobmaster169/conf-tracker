@@ -1,13 +1,14 @@
 import type { PersonCard, TalkCard } from "@/lib/api/views";
 
-/** The group for people no visible schedule names: introduced by a stream, or only on a hidden stage. */
+/** The group for people placed at no conference: on no visible schedule, heard in no visible video, listed for none. */
 export const OTHER = "other";
 
 export type SpeakerGroup = { conference: string; people: PersonCard[] };
 
 /**
- * People by the conference whose schedule names them, newest conference first, so the one on now opens by default.
- * Someone on two conferences' schedules is listed under each; people no schedule names come last, under OTHER.
+ * People by conference, newest first, so the one on now opens by default. A person belongs to every conference the api
+ * places them at (schedule, videos heard in, listings) and every one whose schedule names them; they are listed under
+ * each. Conferences the schedule gives no day sort after the dated ones; people placed nowhere come last, under OTHER.
  * The order of `people` is kept inside each group.
  */
 export function conferencesOf(people: PersonCard[], talks: TalkCard[]): SpeakerGroup[] {
@@ -22,7 +23,15 @@ export function conferencesOf(people: PersonCard[], talks: TalkCard[]): SpeakerG
       conferencesOfPerson.set(speaker.id, set);
     }
   }
-  const order = [...latestDay.entries()].sort(([, a], [, b]) => b.localeCompare(a)).map(([conference]) => conference);
+  for (const card of people) {
+    for (const conference of card.conferences ?? []) {
+      const set = conferencesOfPerson.get(card.person.id) ?? new Set<string>();
+      set.add(conference);
+      conferencesOfPerson.set(card.person.id, set);
+      if (!latestDay.has(conference)) latestDay.set(conference, "");
+    }
+  }
+  const order = [...latestDay.entries()].sort(([a, x], [b, y]) => y.localeCompare(x) || a.localeCompare(b)).map(([conference]) => conference);
   const groups = new Map<string, PersonCard[]>([...order, OTHER].map((c) => [c, []]));
   for (const card of people) {
     const conferences = conferencesOfPerson.get(card.person.id);

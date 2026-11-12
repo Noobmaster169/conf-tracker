@@ -129,12 +129,14 @@ interface PersonCardRow extends people.PersonRow {
   claim_count: number;
   talk_count: number;
   last_seen: Date | null;
+  conferences: string[];
 }
 
 /**
  * Everyone the app knows, whether heard on a video or only scheduled so far; the most quoted first. Someone who came
  * in with a hidden stage and is on nothing else is left out of the list, and still answers by id. A person who was
- * already known before that stage existed stays: a test run does not take a real speaker with it.
+ * already known before that stage existed stays: a test run does not take a real speaker with it, and nor does one
+ * listed for a conference (person_conferences).
  */
 export async function peopleCards(db: Queryable, id?: number, includeHidden = false): Promise<PersonCard[]> {
   const { rows } = await db.query<PersonCardRow>(
@@ -150,7 +152,18 @@ export async function peopleCards(db: Queryable, id?: number, includeHidden = fa
        group by sv.person_id
      )
      select ${people.COLUMNS.split(", ").map((c) => `p.${c}`).join(", ")}, coalesce(said.n, 0) as claim_count, said.last as last_seen,
-       (select count(*) from talk_speakers ts join talks t on t.id = ts.talk_id where ts.person_id = p.id and t.archived_at is null)::int as talk_count
+       (select count(*) from talk_speakers ts join talks t on t.id = ts.talk_id where ts.person_id = p.id and t.archived_at is null)::int as talk_count,
+       array(
+         select distinct x.conference from (
+           select g.conference from talk_speakers ts join talks t on t.id = ts.talk_id join stages g on g.id = t.stage_id
+           where ts.person_id = p.id and t.archived_at is null and not g.hidden
+           union all
+           select g.conference from speakers v join sessions s on s.id = v.session_id and s.replay_of is null join stages g on g.id = s.stage_id
+           where v.person_id = p.id and not g.hidden
+           union all
+           select pc.conference from person_conferences pc where pc.person_id = p.id
+         ) x order by 1
+       ) as conferences
      from people p left join said on said.person_id = p.id
      left join lateral (
        select coalesce(bool_or(not x.hidden), false) as any_shown, min(x.created_at) filter (where x.hidden) as hidden_since from (
@@ -159,6 +172,8 @@ export async function peopleCards(db: Queryable, id?: number, includeHidden = fa
          union all
          select coalesce(g.hidden, false), g.created_at from speakers v join sessions s on s.id = v.session_id left join stages g on g.id = s.stage_id
          where v.person_id = p.id
+         union all
+         select false, null from person_conferences pc where pc.person_id = p.id
        ) x
      ) seen on true
      where ($1::bigint is null or p.id = $1) and ($1::bigint is not null or $2 or seen.any_shown or seen.hidden_since is null or p.created_at < seen.hidden_since)
@@ -166,6 +181,6 @@ export async function peopleCards(db: Queryable, id?: number, includeHidden = fa
     [id ?? null, includeHidden],
   );
   return rows.map((row) =>
-    PersonCard.parse({ person: people.toPerson(row), claim_count: row.claim_count, talk_count: row.talk_count, last_seen: row.last_seen?.toISOString() ?? null }),
+    PersonCard.parse({ person: people.toPerson(row), claim_count: row.claim_count, talk_count: row.talk_count, last_seen: row.last_seen?.toISOString() ?? null, conferences: row.conferences }),
   );
 }

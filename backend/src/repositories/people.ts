@@ -69,6 +69,7 @@ export async function remove(db: Queryable, id: number): Promise<boolean | null>
   // What is left can only be a place on a session that was itself removed from its schedule, and a stored photo.
   await db.query("delete from talk_speakers where person_id = $1", [id]);
   await db.query("delete from person_photos where person_id = $1", [id]);
+  await db.query("delete from person_conferences where person_id = $1", [id]);
   await db.query("delete from people where id = $1", [id]);
   return true;
 }
@@ -85,4 +86,17 @@ export async function forSession(db: Queryable, sessionId: string): Promise<Pers
     [sessionId],
   );
   return rows.map(toPerson);
+}
+
+/** Lists a person for a conference they have no tracked session at yet. False when there is no such person. */
+export async function addConference(db: Queryable, id: number, conference: string): Promise<boolean> {
+  if (!(await get(db, id))) return false;
+  await db.query("insert into person_conferences (person_id, conference) values ($1, $2) on conflict do nothing", [id, conference]);
+  return true;
+}
+
+/** Takes that listing away again; the schedule and the videos still place the person wherever they are. */
+export async function removeConference(db: Queryable, id: number, conference: string): Promise<boolean> {
+  const { rowCount } = await db.query("delete from person_conferences where person_id = $1 and conference = $2", [id, conference]);
+  return (rowCount ?? 0) > 0;
 }

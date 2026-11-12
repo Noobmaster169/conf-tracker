@@ -46,7 +46,8 @@ export type TalkCard = z.infer<typeof TalkCard>;
 export const TalkDetail = TalkCard.extend({ summary: TalkSummary.nullable(), claims: z.array(FeedItem) });
 export type TalkDetail = z.infer<typeof TalkDetail>;
 
-export const PersonCard = z.object({ person: Person, claim_count: z.number(), talk_count: z.number(), last_seen: z.string().nullable() });
+// conferences: from a visible schedule, a video the person was heard in, or a listing. Defaults so an older api still parses.
+export const PersonCard = z.object({ person: Person, claim_count: z.number(), talk_count: z.number(), last_seen: z.string().nullable(), conferences: z.array(z.string()).default([]) });
 export type PersonCard = z.infer<typeof PersonCard>;
 
 export const PersonDetail = PersonCard.extend({ talks: z.array(TalkCard), claims: z.array(FeedItem) });

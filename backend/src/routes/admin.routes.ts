@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { ImportBody, PersonBody, PhotoBody, StageBody, TalkBody } from "../contracts";
 import type { StageWithTalks } from "../contracts-views";
@@ -26,6 +26,8 @@ function body<T>(schema: z.ZodType<T>, raw: unknown, res: Response): T | null {
   res.status(400).json({ error: `${issue?.path.join(".") || "body"}: ${issue?.message}` });
   return null;
 }
+
+const ConferenceBody = z.object({ conference: z.string().trim().min(1).max(200) });
 
 const notFound = (res: Response, what: string): void => void res.status(404).json({ error: `${what} not found` });
 
@@ -175,6 +177,27 @@ export function adminRouter({ db, summarize }: AdminDeps): Router {
   router.delete("/people/:id", async (req, res, next) => {
     try {
       if (!(await people.remove(db, Number(req.params.id) || 0))) return notFound(res, "person");
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // A conference a person is listed for without a tracked session there: the official speaker list, for instance.
+  router.post("/people/:id/conferences", async (req, res, next) => {
+    try {
+      const input = body(ConferenceBody, req.body, res);
+      if (!input) return;
+      if (!(await people.addConference(db, Number(req.params.id) || 0, input.conference))) return notFound(res, "person");
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/people/:id/conferences/:conference", async (req, res, next) => {
+    try {
+      if (!(await people.removeConference(db, Number(req.params.id) || 0, req.params.conference))) return notFound(res, "listing");
       res.status(204).end();
     } catch (error) {
       next(error);
