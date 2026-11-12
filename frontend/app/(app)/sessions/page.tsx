@@ -13,7 +13,8 @@ type DayGroup = { day: string; stages: StageGroup[] };
 
 const NO_DAY = "undated";
 
-/** The schedule arrives ordered by stage, so one pass groups it by stage, and the stages by the day they run. */
+/** The schedule arrives ordered by stage, so one pass groups it by stage, and the stages by the day they run. Within a
+ * day the busiest stage (the main one) comes first, so it is also the one a day opens to. */
 function byDay(cards: TalkCard[]): DayGroup[] {
   const days = new Map<string, Map<string, StageGroup>>();
   for (const card of cards) {
@@ -26,7 +27,10 @@ function byDay(cards: TalkCard[]): DayGroup[] {
   }
   return [...days.entries()]
     .sort(([a], [b]) => (a === NO_DAY ? 1 : b === NO_DAY ? -1 : a.localeCompare(b)))
-    .map(([day, stages]) => ({ day, stages: [...stages.values()] }));
+    .map(([day, stages]) => ({
+      day,
+      stages: [...stages.values()].sort((a, b) => b.cards.length - a.cards.length || a.stage.name.localeCompare(b.stage.name)),
+    }));
 }
 
 const isLive = (cards: TalkCard[]) => cards.some((c) => c.status === "live");
