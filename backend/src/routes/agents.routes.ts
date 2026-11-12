@@ -7,6 +7,7 @@ import { agentById, AGENTS } from "../agents/registry";
 import { type AgentCard, type AgentDetail, type RunSummary, slowMsFor, type WatchSettings } from "../contracts-agents";
 import type { Queryable } from "../db";
 import * as runs from "../repositories/agent-runs";
+import * as incidents from "../repositories/incidents";
 import * as settings from "../repositories/settings";
 
 const STRIP = 24;
@@ -36,7 +37,7 @@ const textOf = (rows: AgentDetail["settings"], key: string | undefined): string 
 
 async function openIncidents(db: Queryable): Promise<Map<string, number>> {
   const { rows } = await db.query<{ agent_id: string; n: number }>(
-    `select agent_id, count(*)::int as n from incidents where resolved_at is null and agent_id is not null group by agent_id`,
+    `select agent_id, count(*)::int as n from incidents where ${incidents.SHOWN_OPEN} and agent_id is not null group by agent_id`,
   );
   return new Map(rows.map((row) => [row.agent_id, row.n]));
 }
@@ -120,6 +121,27 @@ export function agentsRouter({ db }: { db: Queryable }): Router {
       const slowMs = slowMsFor(await settings.watchSettings(db), agent.id);
       const rows = await runs.listRuns(db, { agentId: agent.id, sessionId: query.data.session, before: query.data.before, status, limit: limitOf(req.query.limit, 50, 200), slowMs });
       res.json(await summarise(db, agent, rows, slowMs));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // What the Watcher found: open ones first. `open=1` leaves out what went away or was marked resolved.
+  router.get("/incidents", async (req, res, next) => {
+    try {
+      const agent = typeof req.query.agent === "string" && req.query.agent ? req.query.agent : undefined;
+      res.json(await incidents.list(db, { open: req.query.open === "1" || req.query.open === "true", agentId: agent, limit: limitOf(req.query.limit, 50, 200) }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Marked resolved by hand. It stays the open record of that trouble, so it is not reported again while it lasts.
+  router.post("/incidents/:id/resolve", async (req, res, next) => {
+    try {
+      const incident = await incidents.resolve(db, Number(req.params.id) || 0);
+      if (!incident) return refuse(res, 404, "no such incident");
+      res.json(incident);
     } catch (error) {
       next(error);
     }

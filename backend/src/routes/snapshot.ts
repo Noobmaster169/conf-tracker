@@ -1,3 +1,4 @@
+import { internalAgentIds } from "../agents/registry";
 import type { Session, Snapshot } from "../contracts";
 import type { Queryable } from "../db";
 import type { Hub } from "../realtime/hub";
@@ -22,10 +23,12 @@ export async function buildSnapshot(db: Queryable, hub: Hub, session: Session): 
   const latestHealth = hub.latest(session.id, "health");
   // The row was read before the caller subscribed; a session event since then is newer and would not be replayed.
   const latestSession = hub.latest(session.id, "session");
-  const recentCalls = await calls.latest(db, session.id, SNAPSHOT_CALLS);
+  // The Watcher's calls are about the app, not this video's content: they stay out of its feed and its cost.
+  const internal = internalAgentIds();
+  const recentCalls = await calls.latest(db, session.id, SNAPSHOT_CALLS, internal);
   // The total stops at the newest call in the snapshot. A call inserted after that read is in neither, and its live
   // event adds its cost once; a call in the snapshot is known to the page, which then adds nothing for its event.
-  const costUsd = await calls.totalCost(db, session.id, recentCalls.at(-1)?.id ?? 0);
+  const costUsd = await calls.totalCost(db, session.id, recentCalls.at(-1)?.id ?? 0, internal);
   const current = latestSession?.type === "session" ? latestSession.data : session;
   return {
     session: current,

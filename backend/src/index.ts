@@ -6,6 +6,7 @@ import { extractorFactory } from "./ingest/extractor";
 import { namerFactory } from "./ingest/namer";
 import { createSessionRunner } from "./ingest/session-runner";
 import { createSweeper } from "./ingest/sweeper";
+import { createWatcher } from "./ingest/watcher";
 import { createSummarizer } from "./ingest/summarizer";
 import { trackerFactory } from "./ingest/tracker";
 import { wsSpeechConnector } from "./ingest/speech-client";
@@ -29,7 +30,7 @@ const runner = createSessionRunner({
   connect: wsSpeechConnector(config.SPEECH_URL),
   loops: [trackerFactory(llm, summarize), extractorFactory(llm), namerFactory(llm)],
 });
-const app = createApp({ db, hub, runner, summarize, fetchTitle: fetchVideoTitle });
+const app = createApp({ db, hub, runner, summarize, llm, fetchTitle: fetchVideoTitle });
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT, speech: config.SPEECH_URL, proxy: config.LLM_PROXY_URL }, "api listening"));
 // Videos a previous process left running are fed again from the second they stopped. Not awaited: listening comes first.
@@ -45,6 +46,9 @@ const sweep = () => void sweeper.sweep().then((r) => (r.extracted.length || r.su
 void resumed.then(() => {
   sweep();
   setInterval(sweep, 5 * 60 * 1000).unref();
+  // The Watcher looks once a minute. A pass never throws and never overlaps the one before it.
+  const watcher = createWatcher({ db, runner, llm });
+  setInterval(() => void watcher.pass(), 60 * 1000).unref();
 });
 
 async function shutdown(): Promise<void> {

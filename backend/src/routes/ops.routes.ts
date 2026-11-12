@@ -3,10 +3,10 @@ import { Pool } from "pg";
 import { z } from "zod";
 
 import { listSteps, listVersions, loadPrompt, overrideFor, setOverrides, shippedPrompt } from "../agents/prompts/registry";
-import { config as env } from "../config";
 import { ExtractConfig, NameConfig, SummaryConfig, TrackConfig } from "../contracts";
 import type { Queryable } from "../db";
 import type { SessionRunner } from "../ingest/session-runner";
+import { httpProbe, type Probe, proxyHealthUrl, speechHealthUrl } from "../lib/health";
 import { recentLogs } from "../lib/logger";
 import { replayConfig } from "../lib/replay-config";
 import type { Hub } from "../realtime/hub";
@@ -16,17 +16,7 @@ import * as sessions from "../repositories/sessions";
 import * as settings from "../repositories/settings";
 import { configError } from "./sessions.routes";
 
-export type Probe = (url: string) => Promise<{ ok: boolean; detail: string }>;
-
-/** Asks a service's health route, and says what it answered or why it did not. Never throws. */
-export const httpProbe: Probe = async (url) => {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    return { ok: res.ok, detail: (await res.text()).slice(0, 300) };
-  } catch (error) {
-    return { ok: false, detail: error instanceof Error ? error.message : String(error) };
-  }
-};
+export { httpProbe, type Probe } from "../lib/health";
 
 /**
  * What the box does when asked (deploy/box-ops.py holds the same list and is the one that enforces it). Nothing here is
@@ -86,10 +76,9 @@ export function opsRouter({ db, hub, runner, probe = httpProbe }: { db: Queryabl
 
   router.get("/ops/status", async (_req, res, next) => {
     try {
-      const speechHealth = env.SPEECH_URL.replace(/^ws/, "http").replace(/\/sessions\/?$/, "/healthz");
       const [proxy, speech, calls, box, recent] = await Promise.all([
-        probe(`${env.LLM_PROXY_URL.replace(/\/+$/, "")}/healthz`),
-        probe(speechHealth),
+        probe(proxyHealthUrl()),
+        probe(speechHealthUrl()),
         jobs.callHealth(db, 60),
         settings.get<Record<string, unknown>>(db, "box_report"),
         jobs.list(db, 5),

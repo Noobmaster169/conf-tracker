@@ -75,10 +75,10 @@ export async function get(db: Queryable, id: number): Promise<LlmCall | null> {
 }
 
 /** The last `n` calls of a session, oldest first, so the feed's head is the newest. */
-export async function latest(db: Queryable, sessionId: string, n: number): Promise<CallSummary[]> {
+export async function latest(db: Queryable, sessionId: string, n: number, exclude: string[] = []): Promise<CallSummary[]> {
   const { rows } = await db.query<SummaryRow>(
-    `select * from (select ${SUMMARY} from llm_calls c where c.session_id = $1 order by c.id desc limit $2) recent order by id asc`,
-    [sessionId, n],
+    `select * from (select ${SUMMARY} from llm_calls c where c.session_id = $1 and c.step <> all($3::text[]) order by c.id desc limit $2) recent order by id asc`,
+    [sessionId, n, exclude],
   );
   return rows.map(toSummaryRow);
 }
@@ -90,10 +90,10 @@ export function toSummary(call: LlmCall, claimCount: number = call.claim_count):
 }
 
 /** What a session's calls cost so far, as the proxy reports it; a failed call has no cost and adds nothing. */
-export async function totalCost(db: Queryable, sessionId: string, upToId: number = Number.MAX_SAFE_INTEGER): Promise<number> {
+export async function totalCost(db: Queryable, sessionId: string, upToId: number = Number.MAX_SAFE_INTEGER, exclude: string[] = []): Promise<number> {
   const { rows } = await db.query<{ total: number }>(
-    `select coalesce(sum(cost_usd), 0)::float8 as total from llm_calls where session_id = $1 and id <= $2`,
-    [sessionId, upToId],
+    `select coalesce(sum(cost_usd), 0)::float8 as total from llm_calls where session_id = $1 and id <= $2 and step <> all($3::text[])`,
+    [sessionId, upToId, exclude],
   );
   return rows[0]?.total ?? 0;
 }

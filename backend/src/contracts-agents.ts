@@ -84,3 +84,26 @@ export const RunSummary = z.object({
   created_at: z.string(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;
+
+/** Something the Watcher found wrong. One row is open per rule, agent and video; the same trouble seen again updates it. */
+export const Incident = z.object({
+  id: z.number(),
+  rule: z.string(),
+  agent_id: z.string().nullable(),
+  session_id: z.string().nullable(),
+  session_title: z.string().nullable(),
+  call_id: z.number().nullable(),
+  /** The system trouble that explains this one. */
+  parent_id: z.number().nullable(),
+  title: z.string(),
+  detail: z.string(),
+  diagnosis: z.string().nullable(),
+  first_seen: z.string(),
+  last_seen: z.string(),
+  count: z.number(),
+  /** Someone marked it resolved while the trouble was still there. */
+  acknowledged_at: z.string().nullable(),
+  /** The trouble went away. */
+  resolved_at: z.string().nullable(),
+});
+export type Incident = z.infer<typeof Incident>;

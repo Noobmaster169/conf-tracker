@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 
+import type { LlmClient } from "./agents/llm-client";
 import { requireCaller } from "./auth";
 import type { Queryable } from "./db";
 import type { SessionRunner } from "./ingest/session-runner";
@@ -28,6 +29,8 @@ export interface AppDeps {
   hub: Hub;
   runner: SessionRunner;
   summarize?: Summarize;
+  /** For running a stored call again (POST /calls/:id/rerun). Without it that route answers 503. */
+  llm?: LlmClient;
   fetchTitle?: (url: string) => Promise<string | null>;
   /** How /ops/status asks the proxy and speech for their health. Tests give a fake. */
   probe?: Probe;
