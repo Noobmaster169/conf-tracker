@@ -2,7 +2,7 @@
  * Opens N viewers on one video through the relay and reports, every 10 s, how many are connected and how many
  * events each has received. Every viewer of a healthy relay sees the same events, so min, median and max agree.
  *
- *   RELAY_SECRET=… node --import tsx scripts/load.ts --url https://live.pintar.app --session <id> --n 500 --minutes 10
+ *   RELAY_SECRET=… node --import tsx scripts/load.ts --url https://relay.fiber.ag --session <id> --n 500 --minutes 10
  *
  * RELAY_SECRET is the relay's own (relay/.env.ship); --after defaults to the newest seq the relay reports.
  */

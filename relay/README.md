@@ -5,7 +5,7 @@ Live updates for video pages, from the yt-engine VPS instead of Vercel. Each liv
 
 ```
 page load:     browser ─► Vercel ─► ngrok ─► box api            (unchanged)
-live updates:  browser ─► https://live.pintar.app (VPS k3s) ─► relay ─► ngrok ─► box api   (one per video)
+live updates:  browser ─► https://relay.fiber.ag (VPS k3s) ─► relay ─► ngrok ─► box api   (one per video)
 fallback:      relay down, refusing, or silent 10 s ─► /api/sessions/:id/events on Vercel (as before)
 ```
 
@@ -21,12 +21,12 @@ fallback:      relay down, refusing, or silent 10 s ─► /api/sessions/:id/eve
 `conf-relay-env` Secret from `frontend/.env.prod` and `relay/.env.ship` (made on the first run, holds
 `RELAY_SECRET`), applies `k8s/relay.yaml` and waits for the rollout. Namespace `conf-relay`, limit 160 Mi.
 
-Then on Vercel: `RELAY_URL=https://live.pintar.app` and `RELAY_SECRET` (the value in `relay/.env.ship`), redeploy.
+Then on Vercel: `RELAY_URL=https://relay.fiber.ag` and `RELAY_SECRET` (the value in `relay/.env.ship`), redeploy.
 
 ## Watch and roll back
 
-- `curl https://live.pintar.app/healthz`: channels, viewers per video, passthroughs, upstream state.
+- `curl https://relay.fiber.ag/healthz`: channels, viewers per video, passthroughs, upstream state.
 - Logs: `../vps/yt-engine.sh 'kubectl -n conf-relay logs deploy/relay --tail=100'`.
-- Load test: `RELAY_SECRET=… pnpm load --url https://live.pintar.app --session <id> --n 500 --minutes 10`.
+- Load test: `RELAY_SECRET=… pnpm load --url https://relay.fiber.ag --session <id> --n 500 --minutes 10`.
 - Roll back: remove `RELAY_URL` on Vercel and redeploy; every viewer is back on the Vercel route. The relay can
   then be deleted with `kubectl delete ns conf-relay`.

@@ -4,14 +4,14 @@
 # is printed.
 #
 #   relay/ship.sh                 build, import, apply, wait for the rollout
-#   RELAY_HOST=x.y relay/ship.sh  another hostname (default live.pintar.app)
+#   RELAY_HOST=x.y relay/ship.sh  another hostname (default relay.fiber.ag)
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 ssh_vps="${SSH_VPS:-$repo/../vps/yt-engine.sh}"
-RELAY_HOST="${RELAY_HOST:-live.pintar.app}"
-ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://conf-tracker-six.vercel.app}"
+RELAY_HOST="${RELAY_HOST:-relay.fiber.ag}"
+ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://breakpoint.fiber.ag,https://conf-tracker-six.vercel.app}"
 ship_env="$here/.env.ship"
 env_prod="${ENV_PROD:-$repo/frontend/.env.prod}"
 
