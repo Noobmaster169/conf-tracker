@@ -103,3 +103,8 @@ it("deploy_failed carries what the box said", () => {
 it("the Watcher's own runs are never judged", () => {
   expect(found(facts({ videos: [video({ agents: { watch: { runs: runs("failed", "failed", "failed"), lastWindowT1: 0 } } })] }))).toEqual([]);
 });
+
+it("an agent that is failing is not also reported as quiet: the failures are why the transcript ran ahead", () => {
+  const v = video({ transcriptT: 5000, agents: { track: { runs: runs("ok"), lastWindowT1: 5000 }, extract: { runs: runs("failed", "failed", "failed"), lastWindowT1: 0 } } });
+  expect(found(facts({ videos: [v] })).map((f) => f.rule)).toEqual(["agent_failing"]);
+});

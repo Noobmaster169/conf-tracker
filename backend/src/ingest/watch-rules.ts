@@ -64,13 +64,15 @@ export function evaluate(facts: WatchFacts, settings: WatchSettings, agents: Age
       if (agent.internal || agent.settingsScope !== "video") continue;
       const seen = video.agents[agent.id] ?? { runs: [], lastWindowT1: 0 };
       const about = { agentId: agent.id, sessionId: video.id, parentRule: "proxy_down" as const };
-      if (newestAll(seen.runs, settings.fail_runs, "failed")) {
+      const failing = newestAll(seen.runs, settings.fail_runs, "failed");
+      if (failing) {
         add(found, "agent_failing", `${agent.name} failed ${settings.fail_runs} times in a row on ${video.title}`, { ...about, callId: seen.runs[0]!.id, detail: seen.runs[0]!.error ?? "" });
       }
       if (newestAll(seen.runs, settings.slow_runs, "slow")) add(found, "agent_slow", `${agent.name} is slow on ${video.title}`, { ...about, callId: seen.runs[0]!.id });
       const interval = agent.trigger.intervalKey ? Number(setting(agent, video.config, agent.trigger.intervalKey)) : Number.NaN;
       const on = setting(agent, video.config, agent.id) !== false;
-      if (CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
+      // A failing agent is not also quiet: its failures are why the transcript ran ahead of it.
+      if (!failing && CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
         add(found, "agent_quiet", `${agent.name} has gone quiet on ${video.title}`, {
           ...about,
           detail: `The transcript is ${Math.round(video.transcriptT - seen.lastWindowT1)} s past its last run.`,

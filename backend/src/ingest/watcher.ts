@@ -6,6 +6,7 @@ import { type Incident, slowMsFor, WatchOutput, type WatchSettings } from "../co
 import type { Queryable } from "../db";
 import { httpProbe, proxyHealthUrl, speechHealthUrl } from "../lib/health";
 import { childLogger, recentLogs } from "../lib/logger";
+import { videoIdFromUrl } from "../lib/youtube-id";
 import * as runs from "../repositories/agent-runs";
 import * as incidents from "../repositories/incidents";
 import * as settings from "../repositories/settings";
@@ -49,6 +50,12 @@ const FIXES = `1. A wrong name, claim, title, schedule or session on stage: corr
 8. The disk is full: \`ops/ct job prune\`, then \`ops/ct job recordings-clean\` for finished videos.
 9. A deploy failed: the box kept what was running. Fix forward or \`git revert\`, and push.
 10. Anything else: read \`ops/ct logs 200 warn\` and \`ops/ct status\` before changing anything.`;
+
+/** What to call a video nobody has titled: its YouTube id is short and still finds it. */
+const nameless = (url: string | null): string => {
+  const id = url ? videoIdFromUrl(url) : null;
+  return id ? `Video ${id}` : "An untitled video";
+};
 
 interface VideoRow {
   id: string;
@@ -99,7 +106,7 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
         agents[agent.id] = { runs: recent.map((run) => ({ id: run.id, status: runs.statusOf(run, slowMs), error: run.error })), lastWindowT1: reach.rows[0]?.t1 ?? 0 };
       }
       videos.push({
-        id: row.id, title: row.title ?? row.source_url ?? "a video", status: row.status, attention: row.attention, isReplay: row.replay_of !== null,
+        id: row.id, title: row.title ?? nameless(row.source_url), status: row.status, attention: row.attention, isReplay: row.replay_of !== null,
         transcriptT: row.transcript_t, config: row.config ?? {}, agents,
       });
     }

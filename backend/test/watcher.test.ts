@@ -260,3 +260,13 @@ it("the settings choose the Watcher's model and instructions", async () => {
     expect(llm.requests[0]!.model).toBe("sonnet");
   });
 });
+
+it("a video with no title is named by its YouTube id, not its whole address", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await aVideo(tx, { title: null, sourceUrl: "https://youtu.be/UqU4iJE-8eg?si=JX6ByQ_6T9ou3BsM" });
+    await sessions.setStatus(tx, v.id, "degraded");
+    await createWatcher({ db: tx, runner: runnerWith(), health: up }).pass();
+    expect((await open(tx)).map((i) => i.title)).toEqual(["Video UqU4iJE-8eg stopped by itself"]);
+  });
+});
