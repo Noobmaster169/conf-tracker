@@ -1,6 +1,7 @@
 import request from "supertest";
 import { afterAll, expect, it } from "vitest";
 
+import { fakeLlm } from "../src/agents/__fakes__/fake-llm";
 import { createApp } from "../src/app";
 import { closePool, type Queryable } from "../src/db";
 import { createWatcher } from "../src/ingest/watcher";
@@ -184,5 +185,78 @@ it("a video's snapshot leaves the Watcher's calls out of calls and cost_usd", as
     const snapshot = await buildSnapshot(tx, createHub(10), v);
     expect(snapshot.calls.map((c) => c.id)).toEqual([mine.id]);
     expect(snapshot.cost_usd).toBeCloseTo(0.5);
+  });
+});
+
+// The diagnosis: one model call per newly opened incident on a video.
+const diagnosis = JSON.stringify({ cause: "The Extractor's answers stopped matching the expected shape.", fix: "Put the previous instructions back in use from the Extractor's page." });
+
+it("a newly opened incident on a video gets one watch call and its diagnosis", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await failingVideo(tx);
+    const llm = fakeLlm(diagnosis);
+    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    const [incident] = await open(tx);
+    expect(incident!.diagnosis).toBe("The Extractor's answers stopped matching the expected shape. Fix: Put the previous instructions back in use from the Extractor's page.");
+    const { rows } = await tx.query("select step, model, prompt_version, input, error from llm_calls where session_id = $1 and step = 'watch'", [v.id]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ prompt_version: "v1", error: null });
+    expect(rows[0].input).toContain("Extractor failed 3 times in a row on Main Stage");
+    expect(rows[0].input).toContain("claims: Required");
+    expect(llm.requests[0]!.model).toBe("haiku");
+    expect(llm.requests[0]!.system).not.toContain("{{schema}}");
+  });
+});
+
+it("the same incident on the next pass is not diagnosed again", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await failingVideo(tx);
+    const llm = fakeLlm(diagnosis);
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client });
+    await watcher.pass();
+    await watcher.pass();
+    expect(llm.requests).toHaveLength(1);
+  });
+});
+
+it("an incident with no video makes no model call, and diagnose false makes none at all", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    await settings.put(tx, "watcher", { probe_passes: 1 });
+    const llm = fakeLlm(diagnosis);
+    await createWatcher({ db: tx, runner: runnerWith(), health: async () => ({ proxy: true, speech: false }), llm: llm.client }).pass();
+    expect((await open(tx)).map((i) => i.rule)).toEqual(["speech_down"]);
+    expect(llm.requests).toHaveLength(0);
+
+    const v = await failingVideo(tx);
+    await settings.put(tx, "watcher", { diagnose: false });
+    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    expect(llm.requests).toHaveLength(0);
+  });
+});
+
+it("a failed diagnosis call leaves the incident open and undiagnosed, and the Watcher's own failed calls open nothing about the Watcher", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await failingVideo(tx);
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: fakeLlm(new Error("llm-proxy unreachable")).client });
+    await watcher.pass();
+    await watcher.pass();
+    await watcher.pass();
+    const all = await open(tx);
+    expect(all.map((i) => [i.rule, i.agent_id, i.diagnosis])).toEqual([["agent_failing", "extract", null]]);
+  });
+});
+
+it("the settings choose the Watcher's model and instructions", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await failingVideo(tx);
+    await settings.put(tx, "watcher", { watch_model: "sonnet" });
+    const llm = fakeLlm(diagnosis);
+    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    expect(llm.requests[0]!.model).toBe("sonnet");
   });
 });

@@ -1,9 +1,11 @@
 import type { LlmClient } from "../agents/llm-client";
+import { loadPrompt } from "../agents/prompts/registry";
+import { callStructured } from "../agents/structured";
 import { AGENTS } from "../agents/registry";
-import { slowMsFor, type WatchSettings } from "../contracts-agents";
+import { type Incident, slowMsFor, WatchOutput, type WatchSettings } from "../contracts-agents";
 import type { Queryable } from "../db";
 import { httpProbe, proxyHealthUrl, speechHealthUrl } from "../lib/health";
-import { childLogger } from "../lib/logger";
+import { childLogger, recentLogs } from "../lib/logger";
 import * as runs from "../repositories/agent-runs";
 import * as incidents from "../repositories/incidents";
 import * as settings from "../repositories/settings";
@@ -35,6 +37,18 @@ const realHealth = async (): Promise<{ proxy: boolean; speech: boolean }> => {
   const [proxy, speech] = await Promise.all([httpProbe(proxyHealthUrl()), httpProbe(speechHealthUrl())]);
   return { proxy: proxy.ok, speech: speech.ok };
 };
+
+/** The fixes that exist, lowest first: CLAUDE.md's ladder, as the Watcher is told it. */
+const FIXES = `1. A wrong name, claim, title, schedule or session on stage: correct it in Admin (the video's page, Stages and videos, Speakers).
+2. An agent gives bad answers or answers that do not match the expected shape: on the agent's page in Admin (Agents), edit its instructions as a new version and put it in use, or put the previous version back in use.
+3. An agent is slow, too eager or too timid: on the agent's page, change its model or thresholds in Settings; they apply to running videos.
+4. The model login expired (every agent fails with a login or authentication error): \`ops/ct job set-env '{"key":"CLAUDE_CODE_OAUTH_TOKEN","value":"..."}'\` with a new token.
+5. The model proxy does not answer: \`ops/ct job restart '{"service":"llm-proxy"}'\`. Calls fail for some seconds and the next run picks up.
+6. A video is recovering or needs attention: leave it, it retries by itself every minute. If it stopped: Resume in Admin.
+7. Speech does not answer: wait. Only if it stays down, \`ops/ct job speech-restart\`, which also costs yt-stream's videos a catch-up.
+8. The disk is full: \`ops/ct job prune\`, then \`ops/ct job recordings-clean\` for finished videos.
+9. A deploy failed: the box kept what was running. Fix forward or \`git revert\`, and push.
+10. Anything else: read \`ops/ct logs 200 warn\` and \`ops/ct status\` before changing anything.`;
 
 interface VideoRow {
   id: string;
@@ -117,6 +131,26 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
     return { opened, resolved };
   }
 
+  /** One model call about a new incident on a video. A failed call leaves the incident as it is. */
+  async function diagnose(incident: Incident, watch: WatchSettings): Promise<void> {
+    if (!deps.llm || incident.session_id === null) return;
+    const prompt = { ...loadPrompt("watch", watch.watch_prompt), model: watch.watch_model };
+    const agent = AGENTS.find((a) => a.id === incident.agent_id) ?? null;
+    const recent = agent ? await runs.listRuns(db, { agentId: agent.id, sessionId: incident.session_id, limit: 5, slowMs: slowMsFor(watch, agent.id) }) : [];
+    const window = recent.find((run) => run.id === incident.call_id) ?? recent[0];
+    const lines = recentLogs({ limit: 20, level: "warn" }).map((line) => `${String(line.module ?? "")}: ${String(line.msg ?? "")}${line.err ? ` (${String(line.err)})` : ""}`);
+    const input = [
+      `## the incident\n${incident.title}\n${incident.detail}`,
+      `## the agent's latest runs, newest first\n${
+        recent.map((run) => `- ${run.created_at}, instructions ${run.prompt_version}, ${run.model}, took ${Math.round(run.latency_ms / 1000)} s: ${run.error ?? "ok"}`).join("\n") || "none"
+      }`,
+      `## the newest warnings in the api's log\n${lines.join("\n") || "none"}`,
+      `## the fixes that exist, lowest first\n${FIXES}`,
+    ].join("\n\n");
+    const { data } = await callStructured({ db, llm: deps.llm, sessionId: incident.session_id, prompt }, WatchOutput, { t0: window?.window_t0 ?? 0, t1: window?.window_t1 ?? 0 }, input);
+    if (data) await incidents.setDiagnosis(db, incident.id, `${data.cause} Fix: ${data.fix}`);
+  }
+
   return {
     async pass() {
       if (running) return null;
@@ -126,6 +160,13 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
         if (!watch.enabled) return null;
         const report = await record(watch);
         if (report.opened.length > 0 || report.resolved.length > 0) log.warn(report, "incidents opened or resolved");
+        if (watch.diagnose) {
+          for (const id of report.opened) {
+            const incident = await incidents.get(db, id);
+            // Its own try: a diagnosis that cannot be written must not hide the incidents this pass recorded.
+            if (incident) await diagnose(incident, watch).catch((error) => log.warn({ incident: id, err: error instanceof Error ? error.message : String(error) }, "diagnosing an incident failed"));
+          }
+        }
         return report;
       } catch (error) {
         log.warn({ err: error instanceof Error ? error.message : String(error) }, "a watcher pass failed");
