@@ -8,11 +8,11 @@ const minutes = (seconds: number): string => (seconds < 90 ? `${seconds} s` : `$
 
 /** The system under the agents, in one quiet line. A part that is in trouble is the only thing that stands out. */
 export function SystemLine({ status }: { status: OpsStatus | null }) {
-  if (!status) return <p className="mt-6 text-[13px] text-live">Could not read the system&apos;s status.</p>;
+  if (!status) return <p className="text-[13px] text-live">Could not read the system&apos;s status.</p>;
   const { box } = status;
   const running = status.api.live.length;
   return (
-    <p className="mt-6 flex flex-wrap gap-x-2 gap-y-1 text-[13px] text-ink-soft">
+    <p className="flex flex-wrap gap-x-2 gap-y-1 text-[13px] text-ink-soft">
       <span>{running === 0 ? "No video running" : `${running} video${running === 1 ? "" : "s"} running`}</span>
       <span aria-hidden>·</span>
       <Part ok={status.llm_proxy.ok}>{status.llm_proxy.ok ? "model proxy ok" : "the model proxy does not answer"}</Part>

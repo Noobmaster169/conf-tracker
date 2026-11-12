@@ -17,7 +17,7 @@ function Pane({ title, children }: { title: string; children: string }) {
   return (
     <section className="min-w-0">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">{title}</h3>
-      <pre className="max-h-[56vh] min-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-paper p-4 font-mono text-[12.5px] leading-relaxed">{children}</pre>
+      <pre className="max-h-[62vh] min-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-paper p-4 font-mono text-[12.5px] leading-relaxed">{children}</pre>
     </section>
   );
 }
@@ -45,7 +45,7 @@ export function CallWindow({ data, videoTitle, closeHref, now, children }: { dat
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-3 sm:items-center sm:p-6">
       <Link href={closeHref} scroll={false} aria-label="Close" className="fixed inset-0 cursor-default" />
-      <div role="dialog" aria-modal="true" aria-label={data.result} className="relative flex max-h-full w-full min-w-0 max-w-[1040px] flex-col rounded-2xl border border-line bg-surface shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={data.result} className="relative flex max-h-full w-full min-w-0 max-w-[1400px] flex-col rounded-2xl border border-line bg-surface shadow-2xl">
         <header className="flex items-start gap-3 border-b border-line px-5 py-4 sm:px-6">
           <span className={`mt-2 size-2.5 shrink-0 rounded-full ${dotClass(data.status)}`} />
           <div className="min-w-0 flex-1">

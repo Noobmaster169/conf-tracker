@@ -47,10 +47,10 @@ export function Settings({ agent, editing, editHref, closeHref }: { agent: Agent
       <div className="grid gap-3">
         <dl className="divide-y divide-line">
           {agent.settings.map((setting) => (
-            <div key={setting.key} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 py-2">
-              <dt className="w-56 shrink-0 font-mono text-[13px] text-ink-soft">{setting.key}</dt>
-              <dd className={`min-w-0 flex-1 break-words font-mono text-[13px] ${differs(setting) ? "font-semibold text-ink" : ""}`}>{fieldText(setting.value)}</dd>
-              <dd className="w-full sm:w-auto">
+            <div key={setting.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 py-2">
+              <dt className="min-w-0 break-words font-mono text-[13px] text-ink-soft">{setting.key}</dt>
+              <dd className={`max-w-[14rem] break-words text-right font-mono text-[13px] ${differs(setting) ? "font-semibold text-ink" : ""}`}>{fieldText(setting.value)}</dd>
+              <dd className="col-span-2">
                 <Notes setting={setting} />
               </dd>
             </div>
@@ -68,9 +68,9 @@ export function Settings({ agent, editing, editHref, closeHref }: { agent: Agent
     <form action={saveSettingsAction} className="grid gap-4">
       <input type="hidden" name="agent" value={agent.id} />
       <input type="hidden" name="back" value={closeHref} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3">
         {agent.settings.map((setting) => (
-          <label key={setting.key} className={`block ${fieldKind(setting) === "json" ? "sm:col-span-2" : ""}`}>
+          <label key={setting.key} className="block">
             <span className="mb-1 block font-mono text-[13px] text-ink-soft">{setting.key}</span>
             <Input setting={setting} agent={agent} />
             <Notes setting={setting} />
