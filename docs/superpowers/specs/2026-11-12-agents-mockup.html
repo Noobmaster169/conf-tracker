@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents</title>
+<style>
+  :root{--bg:#0c0c0d;--panel:#151517;--line:#26262a;--text:#ededee;--dim:#8b8b93;--ok:#3ecf8e;--bad:#f2555a;--warn:#f5a524;--accent:#ededee}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:40px 20px 80px}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  .lead{color:var(--dim);margin:0 0 28px}
+  .alert{display:flex;align-items:center;gap:12px;background:rgba(242,85,90,.08);border:1px solid rgba(242,85,90,.35);border-radius:12px;padding:14px 16px;margin-bottom:24px;cursor:pointer}
+  .alert b{font-weight:600}.alert span.go{margin-left:auto;color:var(--dim);font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--ok)}
+  .dot.bad{background:var(--bad)}.dot.warn{background:var(--warn)}
+  .list{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel)}
+  .agent{border-bottom:1px solid var(--line)}.agent:last-child{border-bottom:0}
+  .head{display:flex;align-items:center;gap:14px;padding:18px 20px;cursor:pointer}
+  .head:hover{background:#1a1a1d}
+  .name{font-weight:600;font-size:16px;width:120px;flex:none}
+  .does{color:var(--dim);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .runs{display:flex;gap:3px;flex:none}
+  .runs i{width:5px;height:20px;border-radius:2px;background:var(--ok);opacity:.55}
+  .runs i.bad{background:var(--bad);opacity:1}.runs i.warn{background:var(--warn);opacity:1}
+  .chev{color:var(--dim);transition:transform .15s;flex:none}
+  .agent.open .chev{transform:rotate(90deg)}
+  .body{display:none;padding:0 20px 18px 43px}.agent.open .body{display:block}
+  .call{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+  .call:hover{background:#1e1e22}
+  .call .t{color:var(--dim);font-variant-numeric:tabular-nums;width:64px;flex:none}
+  .call .v{color:var(--dim);width:110px;flex:none}
+  .call .r{flex:1}.call .r.bad{color:var(--bad)}.call .r.warn{color:var(--warn)}
+  .actions{display:flex;gap:8px;margin:12px 0 0 12px}
+  button{font:inherit;font-size:13px;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+  button:hover{border-color:#44444b}button.primary{background:var(--text);color:#000;border-color:var(--text)}
+  .add{margin-top:14px;width:100%;padding:14px;border-style:dashed;color:var(--dim)}
+  .veil{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px}
+  .veil.on{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;width:min(960px,100%);max-height:88vh;display:flex;flex-direction:column}
+  .mh{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line)}
+  .mh h2{font-size:17px;margin:0}.mh .sub{color:var(--dim);font-size:13px}.mh .x{margin-left:auto;border:0;font-size:20px;color:var(--dim)}
+  .err{margin:16px 22px 0;padding:12px 14px;border-radius:10px;background:rgba(242,85,90,.08);border:1px solid rgba(242,85,90,.35);color:#ffb3b5;font-size:14px}
+  .io{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:18px 22px;overflow:auto}
+  .io h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 8px;font-weight:600}
+  pre{margin:0;background:#0e0e10;border:1px solid var(--line);border-radius:10px;padding:14px;font:12.5px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;min-height:180px}
+  .mf{display:flex;gap:8px;padding:14px 22px;border-top:1px solid var(--line)}
+  .mf .meta{margin-left:auto;color:var(--dim);font-size:13px;align-self:center}
+  @media(max-width:640px){.does,.call .v{display:none}.io{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agents</h1>
+  <p class="lead">Who is working, and what each one just did. Click anything to open it.</p>
+
+  <div class="alert" onclick="openCall('Namer',1)">
+    <span class="dot bad"></span>
+    <div><b>Namer</b> failed 3 times in a row on Main Stage</div>
+    <span class="go">See what happened →</span>
+  </div>
+
+  <div class="list" id="list"></div>
+  <button class="add">+ New agent</button>
+</div>
+
+<div class="veil" id="veil" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="mh"><span class="dot" id="mdot"></span><div><h2 id="mtitle"></h2><div class="sub" id="msub"></div></div><button class="x" onclick="closeModal()">×</button></div>
+    <div class="err" id="merr" style="display:none"></div>
+    <div class="io">
+      <div><h3>Input: what it was given</h3><pre id="min"></pre></div>
+      <div><h3>Output: what it answered</h3><pre id="mout"></pre></div>
+    </div>
+    <div class="mf"><button class="primary">Run again</button><button>Edit its instructions</button><span class="meta" id="mmeta"></span></div>
+  </div>
+</div>
+
+<script>
+const agents=[
+ {name:'Tracker',does:'Which session is on stage',state:'ok',bars:'',calls:[
+  {t:'14:31',v:'Main Stage',r:'Still on "Firedancer in production"',s:'ok',
+   i:'SCHEDULE\n10:00  Opening keynote\n14:00  Firedancer in production\n14:40  Token extensions\n\nLAST 4 MINUTES\nS2: ...we shipped it to twelve percent of stake last week...',
+   o:'{\n  "on_stage": "Firedancer in production",\n  "confidence": 0.94,\n  "why": "Speaker is describing the Firedancer rollout"\n}'},
+  {t:'14:30',v:'Stage 2',r:'Switched to "DePIN panel"',s:'ok',i:'SCHEDULE\n...\n\nLAST 4 MINUTES\nS5: welcome to our panel on DePIN...',o:'{\n  "on_stage": "DePIN panel",\n  "confidence": 0.91\n}'}]},
+ {name:'Namer',does:'Who each voice is',state:'bad',bars:'bbb',calls:[
+  {t:'14:31',v:'Main Stage',r:'Failed: answer was not readable',s:'bad',
+   e:'The answer did not match the expected shape: speakers.0.confidence is missing. It was retried once and failed the same way.',
+   i:'SESSION ON STAGE\nFiredancer in production (Kevin B.)\n\nUNNAMED VOICES\nS2: "...as Kevin said earlier, we shipped it..."\nS4: "Thanks. I\'m Anza\'s lead on..."',
+   o:'{\n  "speakers": [\n    { "voice": "S4", "name": "unknown, possibly Anza lead" }\n  ]\n}'},
+  {t:'14:29',v:'Main Stage',r:'Named S2 as Kevin B.',s:'ok',i:'SESSION ON STAGE\nFiredancer in production (Kevin B.)\n\nUNNAMED VOICES\nS2: "...I\'m Kevin, I work on Firedancer..."',o:'{\n  "speakers": [\n    { "voice": "S2", "name": "Kevin B.", "confidence": 0.93 }\n  ]\n}'}]},
+ {name:'Extractor',does:'Claims made on stage',state:'ok',bars:'w',calls:[
+  {t:'14:31',v:'Main Stage',r:'3 claims',s:'ok',
+   i:'SESSION ON STAGE\nFiredancer in production\n\nTRANSCRIPT 14:29 to 14:31\nS2: ...we shipped it to twelve percent of stake last week, and mainnet-beta has had zero incidents since...',
+   o:'{\n  "claims": [\n    { "claim": "Firedancer runs on 12% of stake", "speaker": "S2", "importance": 4 },\n    { "claim": "No incidents since rollout", "speaker": "S2", "importance": 3 }\n  ]\n}'},
+  {t:'14:30',v:'Main Stage',r:'Slow: took 94 s',s:'warn',i:'SESSION ON STAGE\n...\n\nTRANSCRIPT 14:28 to 14:30\n...',o:'{\n  "claims": []\n}'},
+  {t:'14:30',v:'Stage 2',r:'No claims',s:'ok',i:'TRANSCRIPT 14:28 to 14:30\nS5: welcome everyone, grab a seat...',o:'{\n  "claims": []\n}'}]},
+ {name:'Summarizer',does:'Write-up when a session ends',state:'ok',bars:'',calls:[
+  {t:'14:02',v:'Main Stage',r:'Wrote "Opening keynote"',s:'ok',i:'SESSION\nOpening keynote\n\nFULL TRANSCRIPT (38 min)\n...\n\nITS CLAIMS (14)\n...',o:'{\n  "headline": "Solana sets out its 2027 roadmap",\n  "summary": "..."\n}'}]}
+];
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function bars(a){let h='';const tail={b:'bad',w:'warn'};const n=24-a.bars.length;for(let k=0;k<n;k++)h+='<i></i>';for(const c of a.bars)h+='<i class="'+tail[c]+'"></i>';return h}
+document.getElementById('list').innerHTML=agents.map((a,ai)=>`
+ <div class="agent" id="a${ai}">
+  <div class="head" onclick="this.parentNode.classList.toggle('open')">
+   <span class="dot ${a.state==='ok'?'':a.state}"></span><span class="name">${a.name}</span><span class="does">${a.does}</span>
+   <span class="runs" title="last 24 runs">${bars(a)}</span><span class="chev">›</span>
+  </div>
+  <div class="body">
+   ${a.calls.map((c,ci)=>`<div class="call" onclick="openCall('${a.name}',${ci},true)"><span class="dot ${c.s==='ok'?'':c.s}"></span><span class="t">${c.t}</span><span class="v">${c.v}</span><span class="r ${c.s==='ok'?'':c.s}">${esc(c.r)}</span><span class="chev">›</span></div>`).join('')}
+   <div class="actions"><button>All calls</button><button>Only failed</button><button>Edit its instructions</button><button>Settings</button></div>
+  </div>
+ </div>`).join('');
+function openCall(name,ci,exact){const a=agents.find(x=>x.name===name);const c=exact?a.calls[ci]:a.calls.find(x=>x.s==='bad')||a.calls[0];
+ mtitle.textContent=name+': '+c.r;msub.textContent=c.v+' at '+c.t;mdot.className='dot '+(c.s==='ok'?'':c.s);
+ merr.style.display=c.e?'block':'none';merr.textContent=c.e||'';min.textContent=c.i;mout.textContent=c.o;
+ mmeta.textContent='instructions v'+(name==='Extractor'?5:name==='Namer'?3:1)+' · sonnet';veil.classList.add('on')}
+function closeModal(){veil.classList.remove('on')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+</script>
+</body>
+</html>
