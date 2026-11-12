@@ -77,7 +77,7 @@ export async function forSession(db: Queryable, sessionId: string, url: PublicUr
 export async function forTalk(db: Queryable, talkId: number, url: PublicUrl): Promise<Frame[]> {
   const { rows } = await db.query<Row>(
     `select ${COLUMNS} from frames f ${SPAN}
-      where f.session_id in (select distinct session_id from talk_spans where talk_id = $1) and sp.talk_id = $1 and ${SHOWN}
+      where f.session_id in (select distinct p.session_id from talk_spans p join sessions s on s.id = p.session_id and s.replay_of is null where p.talk_id = $1) and sp.talk_id = $1 and ${SHOWN}
       order by f.created_at, f.t, f.id`,
     [talkId],
   );

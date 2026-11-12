@@ -85,3 +85,19 @@ test("the settings are read, patched, refused when wrong, and a null takes a key
     expect((await request(app).post("/sessions/x/frames/fill").set(auth).send({})).status).toBe(503);
   });
 });
+
+test("a replay gets no frames: not grabbed while it runs, and a fill is refused", async () => {
+  await inRollback(async (tx) => {
+    const original = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {} });
+    const replay = await sessions.create(tx, { sourceUrl: URL, sourceFile: null, config: {}, replayOf: original.id });
+    await tx.query("update sessions set status = 'live' where id = $1", [replay.id]);
+    const { store, media, puts } = fakes([30, 30, 200, 200]);
+    let resolved = 0;
+    const counting: Media = { ...media, resolve: async (u) => (resolved++, media.resolve(u)) };
+    const framer = createFramer({ db: tx, media: counting, store, live: () => [replay.id] });
+    for (let k = 0; k < 4; k++) await framer.pass();
+    expect(resolved).toBe(0);
+    expect(puts).toHaveLength(0);
+    await expect(framer.startFill(replay.id)).rejects.toThrow(/replay/);
+  });
+});

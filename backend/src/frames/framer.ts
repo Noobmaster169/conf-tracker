@@ -96,7 +96,8 @@ export function createFramer(deps: FramerDeps) {
 
   async function grabOnce(sessionId: string, state: VideoState, s: FrameSettings): Promise<void> {
     const session = await sessions.get(db, sessionId);
-    if (!session?.source_url) return;
+    // A replay reads the original's stored audio again; the original already has its frames, so a replay gets none.
+    if (!session?.source_url || session.replay_of !== null) return;
     if (!state.resolved || now() - state.resolvedAt > MANIFEST_TTL_MS) {
       state.resolved = await media.resolve(session.source_url);
       state.resolvedAt = now();
@@ -216,6 +217,7 @@ export function createFramer(deps: FramerDeps) {
       if (running && !running.done_at) throw new Error("already filling this video");
       const session = await sessions.get(db, sessionId);
       if (!session) throw new Error("video not found");
+      if (session.replay_of !== null) throw new Error("a replay has no frames of its own: fill the original video");
       if (!session.source_url) throw new Error("this video has no YouTube source");
       void fill(sessionId, opts).catch((error: unknown) => log.warn({ sessionId, err: String(error) }, "fill did not start"));
     },
