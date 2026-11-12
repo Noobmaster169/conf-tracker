@@ -47,7 +47,7 @@ export default async function SpeakerPage({ params }: PageProps<"/speakers/[id]"
 
       <section aria-labelledby="claims" className="mt-10">
         <h2 id="claims" className="mb-4 text-lg font-semibold">
-          What {person.name.split(" ")[0]} has claimed
+          Tracked Claims
         </h2>
         {claims.length === 0 ? (
           <Empty>Nothing yet. Claims appear here once {person.name} has been heard and identified on a tracked stage.</Empty>
@@ -55,7 +55,7 @@ export default async function SpeakerPage({ params }: PageProps<"/speakers/[id]"
           <ol className="space-y-3">
             {claims.map((item) => (
               <li key={item.id}>
-                <ClaimCard item={item} hide={{ who: true }} />
+                <ClaimCard item={item} />
               </li>
             ))}
           </ol>

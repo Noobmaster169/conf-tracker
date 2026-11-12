@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import type { ClaimKind } from "@/lib/api/schemas";
@@ -44,4 +45,42 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function Page({ children, narrow = false }: { children: ReactNode; narrow?: boolean }) {
   return <main className={`mx-auto px-4 py-8 sm:px-6 sm:py-10 ${narrow ? "max-w-[860px]" : "max-w-[1400px]"}`}>{children}</main>;
+}
+
+export interface TabItem {
+  href: string;
+  label: string;
+  /** A count shown beside the label, the number of claims for instance. */
+  count?: number;
+  current: boolean;
+}
+
+/**
+ * A page's sections as underlined tabs. Each tab is a link, so a tab can be shared, reloaded and opened with Back, and
+ * the page renders on the server without any script.
+ */
+export function Tabs({ label, items }: { label: string; items: TabItem[] }) {
+  return (
+    <nav aria-label={label} className="-mx-4 mb-6 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+      <ul className="flex gap-1">
+        {items.map((item) => (
+          <li key={item.href} className="shrink-0">
+            <Link
+              href={item.href}
+              scroll={false}
+              aria-current={item.current ? "page" : undefined}
+              className={`-mb-px flex min-h-11 items-center gap-2 border-b-2 px-4 font-semibold transition-colors ${
+                item.current ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"
+              }`}
+            >
+              {item.label}
+              {item.count !== undefined && (
+                <span className={`rounded-full px-1.5 text-xs tabular-nums ${item.current ? "bg-sunk text-ink" : "bg-sunk text-ink-faint"}`}>{item.count}</span>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }

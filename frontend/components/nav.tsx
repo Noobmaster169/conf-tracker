@@ -19,7 +19,7 @@ function Item({ href, label, active }: { href: string; label: string; active: bo
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`rounded-md px-3 py-1.5 font-medium ${active ? "bg-accent-soft text-accent" : "text-ink-soft hover:bg-sunk hover:text-ink"}`}
+      className={`rounded-md px-3 py-1.5 font-medium ${active ? "bg-sunk text-ink" : "text-ink-soft hover:bg-sunk hover:text-ink"}`}
     >
       {label}
     </Link>
@@ -32,7 +32,7 @@ export function Nav({ theme }: { theme: Theme }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <nav aria-label="Main" className="mx-auto flex max-w-[1400px] items-center gap-1 overflow-x-auto px-4 py-2.5 sm:px-6">
-        <Link href="/" className="mr-4 shrink-0 wordmark text-[17px] font-bold tracking-tight">
+        <Link href="/" className="mr-4 shrink-0 text-[16px] font-semibold tracking-tight text-ink">
           Conference Tracker
         </Link>
         {LINKS.map((link) => (

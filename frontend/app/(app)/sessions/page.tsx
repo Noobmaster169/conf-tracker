@@ -105,12 +105,12 @@ export default async function SessionsPage({ searchParams }: PageProps<"/session
                       href={href(day.day, s.stage.id)}
                       aria-current={current ? "page" : undefined}
                       className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 font-semibold transition-colors ${
-                        current ? "border-accent text-ink" : "border-transparent text-ink-soft hover:text-ink"
+                        current ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"
                       }`}
                     >
                       {isLive(s.cards) && <LiveDot />}
                       {s.stage.name}
-                      <span className={`rounded-full px-1.5 text-xs ${current ? "bg-accent-soft text-accent" : "bg-sunk text-ink-faint"}`}>{s.cards.length}</span>
+                      <span className={`rounded-full px-1.5 text-xs ${current ? "bg-sunk text-ink" : "bg-sunk text-ink-faint"}`}>{s.cards.length}</span>
                     </Link>
                   </li>
                 );

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Avatar } from "@/components/ui/avatar";
-import { LiveBadge, Page } from "@/components/ui/bits";
+import { Empty, LiveBadge, Page, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk } from "@/lib/api-client";
@@ -10,14 +10,26 @@ import { formatDay, formatT, plannedTime, plural, titleAndOrg } from "@/lib/form
 
 export const dynamic = "force-dynamic";
 
-const WAITING = {
-  upcoming: "This session has not been on stage yet. Its summary and claims appear here once it has.",
-  live: "On stage now. Claims appear below as they are made, and the summary is written when the session ends.",
+const NO_SUMMARY = {
+  upcoming: "This session has not been on stage yet. Its summary is written once it has ended.",
+  live: "On stage now. The summary is written when the session ends.",
   ended: "No summary has been written for this session.",
 } as const;
 
-export default async function SessionPage({ params }: PageProps<"/sessions/[id]">) {
+const NO_CLAIMS = {
+  upcoming: "This session has not been on stage yet. Claims appear here as they are made.",
+  live: "On stage now. Claims appear here as they are made.",
+  ended: "No claims were tracked in this session.",
+} as const;
+
+/** The sections of a session, Claims first. A new one is a new entry here and a branch below. */
+const TABS = ["claims", "summary"] as const;
+type Tab = (typeof TABS)[number];
+const parseTab = (value: unknown): Tab => (TABS.includes(value as Tab) ? (value as Tab) : "claims");
+
+export default async function SessionPage({ params, searchParams }: PageProps<"/sessions/[id]">) {
   const { id } = await params;
+  const tab = parseTab((await searchParams).tab);
   const detail = await getTalk(id);
   if (!detail) notFound();
   const { talk, stage, summary, claims } = detail;
@@ -59,24 +71,37 @@ export default async function SessionPage({ params }: PageProps<"/sessions/[id]"
       )}
       {talk.description && <p className="mt-6 max-w-[72ch] text-ink-soft">{talk.description}</p>}
 
-      <section aria-label="Summary" className="mt-8 rounded-2xl border border-line bg-surface p-6 sm:p-8">
-        {summary ? <Summary content={summary.summary.content} /> : <p className="text-ink-soft">{WAITING[detail.status]}</p>}
-      </section>
-
-      {claims.length > 0 && (
-        <section aria-labelledby="claims" className="mt-10">
-          <h2 id="claims" className="mb-4 text-lg font-semibold">
-            {plural(claims.length, "claim")} from this session
-          </h2>
-          <ol className="space-y-3">
-            {claims.map((item) => (
-              <li key={item.id}>
-                <ClaimCard item={item} hide={{ talk: true }} />
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      <div className="mt-10">
+        <Tabs
+          label="Session"
+          items={[
+            { href: `/sessions/${talk.id}`, label: "Claims", count: claims.length, current: tab === "claims" },
+            { href: `/sessions/${talk.id}?tab=summary`, label: "Summary", current: tab === "summary" },
+          ]}
+        />
+        {tab === "claims" &&
+          (claims.length === 0 ? (
+            <Empty>{NO_CLAIMS[detail.status]}</Empty>
+          ) : (
+            <section aria-label={`${plural(claims.length, "claim")} from this session`}>
+              <ol className="space-y-3">
+                {claims.map((item) => (
+                  <li key={item.id}>
+                    <ClaimCard item={item} hide={{ talk: true }} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+        {tab === "summary" &&
+          (summary ? (
+            <section aria-label="Summary" className="rounded-xl border border-line bg-surface p-6 sm:p-8">
+              <Summary content={summary.summary.content} />
+            </section>
+          ) : (
+            <Empty>{NO_SUMMARY[detail.status]}</Empty>
+          ))}
+      </div>
     </Page>
   );
 }

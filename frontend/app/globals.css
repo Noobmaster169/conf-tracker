@@ -1,60 +1,58 @@
 @import "tailwindcss";
 
 /*
- * A conference at night: near-black with a violet cast, light ink, one purple for anything you can press, a green
- * kept for what went well and red for the one thing that is urgent, a stage that is live. Dark is the default;
- * the reader can switch to the light sheet, which keeps the same purple. Nothing else declares a colour.
+ * Clean dark: neutral greys with no cast, light ink, white for the one button you press, a single quiet blue for links,
+ * focus and what is new, green for what went well and red for a stage that is live. Dark is the default; the reader
+ * can switch to the light sheet, which keeps the same roles. Nothing else declares a colour.
  */
 :root {
   color-scheme: dark;
-  --paper: #0a0911;
-  --surface: #13111d;
-  --sunk: #1d1a2e;
-  --line: #2b2742;
-  --ink: #f3f1fb;
-  --ink-soft: #b5afcb;
-  --ink-faint: #8982a6;
-  --accent: #b388ff;
-  --accent-soft: #2a1d4d;
-  --accent-fill: #7c3aed;
-  --on-accent: #ffffff;
-  --live: #ff6480;
-  --live-soft: #3b1422;
-  --ok: #14f195;
-  --kind-announcement: #b388ff;
-  --kind-metric: #2ee6a0;
-  --kind-roadmap: #6cb6ff;
-  --kind-opinion: #f5b54a;
-  --kind-fact: #a09ab8;
-  --avatar-bg: 45% 22%;
-  --avatar-ink: 75% 84%;
-  --glow: radial-gradient(60rem 28rem at 15% -10%, rgb(153 69 255 / 0.16), transparent 70%), radial-gradient(50rem 24rem at 95% -15%, rgb(20 241 149 / 0.07), transparent 70%);
+  --paper: #09090b;
+  --surface: #121214;
+  --sunk: #1c1c20;
+  --line: #27272b;
+  --ink: #f4f4f5;
+  --ink-soft: #a1a1aa;
+  --ink-faint: #8a8a94;
+  --accent: #7aaefc;
+  --accent-soft: #16202f;
+  --accent-fill: #f4f4f5;
+  --on-accent: #09090b;
+  --live: #f87171;
+  --live-soft: #2b1416;
+  --ok: #34d399;
+  --kind-announcement: #7aaefc;
+  --kind-metric: #34d399;
+  --kind-roadmap: #5ed3e6;
+  --kind-opinion: #f2c14e;
+  --kind-fact: #a1a1aa;
+  --avatar-bg: 14% 20%;
+  --avatar-ink: 30% 78%;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --paper: #f4f2f8;
+  --paper: #fafafa;
   --surface: #ffffff;
-  --sunk: #eae6f2;
-  --line: #dcd7e8;
-  --ink: #16131f;
-  --ink-soft: #4f4962;
-  --ink-faint: #736c88;
-  --accent: #6d28d9;
-  --accent-soft: #efe7fd;
-  --accent-fill: #6d28d9;
+  --sunk: #f2f2f4;
+  --line: #e4e4e7;
+  --ink: #09090b;
+  --ink-soft: #52525b;
+  --ink-faint: #6b6b74;
+  --accent: #1d5fd1;
+  --accent-soft: #eaf1fd;
+  --accent-fill: #18181b;
   --on-accent: #ffffff;
   --live: #d7263d;
   --live-soft: #fde8eb;
-  --ok: #0b7a6e;
-  --kind-announcement: #6d28d9;
-  --kind-metric: #0b7a6e;
-  --kind-roadmap: #1d5fd1;
+  --ok: #0b7a5e;
+  --kind-announcement: #1d5fd1;
+  --kind-metric: #0b7a5e;
+  --kind-roadmap: #0e7490;
   --kind-opinion: #9a5b00;
   --kind-fact: #5b6472;
-  --avatar-bg: 55% 90%;
-  --avatar-ink: 55% 28%;
-  --glow: none;
+  --avatar-bg: 20% 92%;
+  --avatar-ink: 30% 30%;
 }
 
 @theme inline {
@@ -83,8 +81,6 @@ body {
 }
 
 body {
-  background-image: var(--glow);
-  background-repeat: no-repeat;
   font-size: 15px;
   line-height: 1.5;
 }
@@ -140,7 +136,7 @@ body {
 }
 
 .btn:hover {
-  filter: brightness(1.08);
+  filter: brightness(0.9);
 }
 
 .btn:disabled {
@@ -163,16 +159,4 @@ body {
 .avatar-initials {
   background: hsl(var(--hue) var(--avatar-bg));
   color: hsl(var(--hue) var(--avatar-ink));
-}
-
-/* The name of the app, in the two colours of the conference it follows. */
-.wordmark {
-  background: linear-gradient(90deg, #9945ff, #14f195);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-:root[data-theme="light"] .wordmark {
-  background-image: linear-gradient(90deg, #6d28d9, #0b7a6e);
 }
