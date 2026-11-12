@@ -47,7 +47,8 @@ void resumed.then(() => {
   sweep();
   setInterval(sweep, 5 * 60 * 1000).unref();
   // The Watcher looks once a minute. A pass never throws and never overlaps the one before it.
-  const watcher = createWatcher({ db, runner, llm });
+  // Its own client with a short patience: a diagnosis is a nicety, and a model that hangs should not hold a proxy slot for minutes.
+  const watcher = createWatcher({ db, runner, llm: proxyLlmClient({ timeoutMs: 60_000 }) });
   setInterval(() => void watcher.pass(), 60 * 1000).unref();
 });
 

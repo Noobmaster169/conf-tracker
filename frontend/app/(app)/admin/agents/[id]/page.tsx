@@ -116,7 +116,7 @@ export default async function AgentPage({ params, searchParams }: PageProps<"/ad
 
       <div className="grid grid-cols-1 gap-6">
         {isWatcher && (
-          <Panel title="Incidents" lead="What it found wrong. One that goes away closes itself; one you mark resolved is not raised again while it lasts.">
+          <Panel title="Incidents" lead="What it found wrong. One that goes away closes itself. Mute one you already know about and it is not raised again while it lasts.">
             <IncidentList incidents={incidents} now={now} back={base} />
           </Panel>
         )}

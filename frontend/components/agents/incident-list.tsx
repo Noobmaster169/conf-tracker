@@ -7,7 +7,7 @@ import { type Incident, isOpen } from "@/lib/api-client";
 
 function Entry({ incident, explains, now, back }: { incident: Incident; explains: Incident[]; now: Date; back: string }) {
   const open = isOpen(incident);
-  const state = incident.resolved_at ? `went away ${agoText(incident.resolved_at, now)}` : incident.acknowledged_at ? "marked resolved, still there" : `since ${agoText(incident.first_seen, now)}`;
+  const state = incident.resolved_at ? `went away ${agoText(incident.resolved_at, now)}` : incident.acknowledged_at ? "muted, still there" : `since ${agoText(incident.first_seen, now)}`;
   return (
     <li id={`incident-${incident.id}`} className="border-b border-line last:border-b-0">
       <details className="group">
@@ -49,7 +49,7 @@ function Entry({ incident, explains, now, back }: { incident: Incident; explains
               <form action={resolveIncidentAction}>
                 <input type="hidden" name="id" value={incident.id} />
                 <input type="hidden" name="back" value={back} />
-                <SubmitButton quiet>Mark resolved</SubmitButton>
+                <SubmitButton quiet>Mute</SubmitButton>
               </form>
             )}
           </div>

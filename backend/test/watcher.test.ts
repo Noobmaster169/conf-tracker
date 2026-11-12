@@ -196,7 +196,9 @@ it("a newly opened incident on a video gets one watch call and its diagnosis", a
     await calm(tx);
     const v = await failingVideo(tx);
     const llm = fakeLlm(diagnosis);
-    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client });
+    await watcher.pass();
+    await watcher.idle();
     const [incident] = await open(tx);
     expect(incident!.diagnosis).toBe("The Extractor's answers stopped matching the expected shape. Fix: Put the previous instructions back in use from the Extractor's page.");
     const { rows } = await tx.query("select step, model, prompt_version, input, error from llm_calls where session_id = $1 and step = 'watch'", [v.id]);
@@ -217,6 +219,7 @@ it("the same incident on the next pass is not diagnosed again", async () => {
     const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client });
     await watcher.pass();
     await watcher.pass();
+    await watcher.idle();
     expect(llm.requests).toHaveLength(1);
   });
 });
@@ -226,13 +229,21 @@ it("an incident with no video makes no model call, and diagnose false makes none
     await calm(tx);
     await settings.put(tx, "watcher", { probe_passes: 1 });
     const llm = fakeLlm(diagnosis);
-    await createWatcher({ db: tx, runner: runnerWith(), health: async () => ({ proxy: true, speech: false }), llm: llm.client }).pass();
+    {
+      const w = createWatcher({ db: tx, runner: runnerWith(), health: async () => ({ proxy: true, speech: false }), llm: llm.client });
+      await w.pass();
+      await w.idle();
+    }
     expect((await open(tx)).map((i) => i.rule)).toEqual(["speech_down"]);
     expect(llm.requests).toHaveLength(0);
 
     const v = await failingVideo(tx);
     await settings.put(tx, "watcher", { diagnose: false });
-    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    {
+      const w = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client });
+      await w.pass();
+      await w.idle();
+    }
     expect(llm.requests).toHaveLength(0);
   });
 });
@@ -245,6 +256,7 @@ it("a failed diagnosis call leaves the incident open and undiagnosed, and the Wa
     await watcher.pass();
     await watcher.pass();
     await watcher.pass();
+    await watcher.idle();
     const all = await open(tx);
     expect(all.map((i) => [i.rule, i.agent_id, i.diagnosis])).toEqual([["agent_failing", "extract", null]]);
   });
@@ -256,7 +268,11 @@ it("the settings choose the Watcher's model and instructions", async () => {
     const v = await failingVideo(tx);
     await settings.put(tx, "watcher", { watch_model: "sonnet" });
     const llm = fakeLlm(diagnosis);
-    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client }).pass();
+    {
+      const w = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: llm.client });
+      await w.pass();
+      await w.idle();
+    }
     expect(llm.requests[0]!.model).toBe("sonnet");
   });
 });
@@ -268,5 +284,53 @@ it("a video with no title is named by its YouTube id, not its whole address", as
     await sessions.setStatus(tx, v.id, "degraded");
     await createWatcher({ db: tx, runner: runnerWith(), health: up }).pass();
     expect((await open(tx)).map((i) => i.title)).toEqual(["Video UqU4iJE-8eg stopped by itself"]);
+  });
+});
+
+// From the final review.
+it("a diagnosis that hangs does not stop the Watcher from looking: the next pass still runs", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await failingVideo(tx);
+    let release: (text: string) => void = () => {};
+    const hung = { complete: () => new Promise<never>((_, reject) => (release = (text) => reject(new Error(text)))) };
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: up, llm: hung });
+    expect((await watcher.pass())?.opened).toHaveLength(1);
+    expect(await watcher.pass()).toEqual({ opened: [], resolved: [] });
+    release("gave up");
+    await watcher.idle();
+  });
+});
+
+it("no diagnosis is asked for while the proxy is failing, nor for an incident filed under a system one", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    await settings.put(tx, "watcher", { probe_passes: 1 });
+    const v = await failingVideo(tx);
+    const llm = fakeLlm(diagnosis);
+    const watcher = createWatcher({ db: tx, runner: runnerWith([v.id]), health: async () => ({ proxy: false, speech: true }), llm: llm.client });
+    await watcher.pass();
+    await watcher.idle();
+    expect((await open(tx)).map((i) => i.rule).sort()).toEqual(["agent_failing", "proxy_down"]);
+    expect(llm.requests).toHaveLength(0);
+  });
+});
+
+it("the tracker making no calls on a stage with no schedule is not reported", async () => {
+  await inRollback(async (tx) => {
+    await calm(tx);
+    const v = await aVideo(tx);
+    await sessions.setStatus(tx, v.id, "live");
+    await tx.query("insert into segments (session_id, t0, t1, text, words) values ($1, 0, 900, 'x', '[]')", [v.id]);
+    await aCall(tx, v.id, { windowT0: 870, windowT1: 900 });
+    await createWatcher({ db: tx, runner: runnerWith([v.id]), health: up }).pass();
+    expect(await open(tx)).toEqual([]);
+  });
+});
+
+it("the index that keeps the Watcher's per-minute read of runs cheap exists", async () => {
+  await inRollback(async (tx) => {
+    const { rows } = await tx.query("select indexdef from pg_indexes where tablename = 'llm_calls' and indexname = 'llm_calls_run'");
+    expect(rows[0]?.indexdef).toMatch(/\(session_id, step, window_t0, window_t1, id\)/);
   });
 });

@@ -31,3 +31,11 @@ test("settingsDone says where it applied and what waits", () => {
   expect(settingsDone({ default_changed: false, sessions: [{ id: "a", title: "x" }], waits_for_next_start: [] })).toBe("Saved for 1 running video.");
   expect(settingsDone({ default_changed: false, sessions: [], waits_for_next_start: [] })).toBe("Nothing changed: those are the values already in use.");
 });
+
+test("changedSettings with everything: each value shown is sent, so running videos can be brought to what the form shows", () => {
+  const settings = [setting("name", true, true), setting("name_floor", 0.6, 0.7), setting("name_model", "sonnet", "sonnet")];
+  const form: Record<string, string> = { name: "on", name_floor: "0.6", name_model: "sonnet" };
+  // A value at its default is sent as null: "take it back to the default", which removes a video's own override.
+  expect(changedSettings(settings, (key) => form[key] ?? null, true)).toEqual({ name: null, name_floor: 0.6, name_model: null });
+  expect(changedSettings(settings, (key) => form[key] ?? null)).toEqual({});
+});

@@ -23,9 +23,11 @@ export function fieldText(value: unknown): string {
 
 /**
  * What a posted settings form asks to change: only the keys whose value differs from what is stored now. A field
- * left empty takes the key back to its default (null). Throws, naming the field, when a value cannot be read.
+ * left empty takes the key back to its default (null). With `everything`, every value shown is asked for, changed or
+ * not: that is how videos already running are brought to what the form shows, since the form is filled from what
+ * new videos get. Throws, naming the field, when a value cannot be read.
  */
-export function changedSettings(settings: AgentSetting[], read: (key: string) => string | null): Record<string, unknown> {
+export function changedSettings(settings: AgentSetting[], read: (key: string) => string | null, everything = false): Record<string, unknown> {
   const set: Record<string, unknown> = {};
   for (const setting of settings) {
     const kind = fieldKind(setting);
@@ -45,7 +47,9 @@ export function changedSettings(settings: AgentSetting[], read: (key: string) =>
       }
     } else next = raw.trim();
     const now = next === null ? setting.default : next;
-    if (JSON.stringify(now) !== JSON.stringify(setting.value)) set[setting.key] = next;
+    // Everything: each value shown is sent, one at its default as null, so a video's own override goes away too.
+    if (everything) set[setting.key] = JSON.stringify(now) === JSON.stringify(setting.default) ? null : next;
+    else if (JSON.stringify(now) !== JSON.stringify(setting.value)) set[setting.key] = next;
   }
   return set;
 }

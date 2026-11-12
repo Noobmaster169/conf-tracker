@@ -78,13 +78,17 @@ export function Settings({ agent, editing, editHref, closeHref }: { agent: Agent
         ))}
       </div>
       {agent.settings_scope === "video" ? (
-        <label className="block max-w-xs">
+        <label className="block max-w-md">
           <span className="mb-1 block text-[13px] font-medium text-ink-soft">Apply to</span>
           <select name="apply" defaultValue="all" className="field">
             <option value="all">New videos and the ones running now</option>
             <option value="new">New videos only</option>
             <option value="running">The videos running now only</option>
           </select>
+          <span className="mt-3 flex items-start gap-2 text-[13px] text-ink-soft">
+            <input type="checkbox" name="everything" className="mt-0.5 size-4" />
+            <span>Send every value shown, not only the ones I change. Use it to bring the videos running now to exactly this, their own overrides included.</span>
+          </span>
         </label>
       ) : (
         <p className="text-[13px] text-ink-soft">These apply to the whole app from its next look, within a minute.</p>

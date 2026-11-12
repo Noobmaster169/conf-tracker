@@ -66,6 +66,7 @@ interface VideoRow {
   replay_of: string | null;
   config: Record<string, unknown>;
   transcript_t: number;
+  has_schedule: boolean;
 }
 
 /**
@@ -73,40 +74,44 @@ interface VideoRow {
  * proxy, speech and the box answer; what the rules find wrong becomes an incident in the database. It never throws
  * and never runs twice at once.
  */
-export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport | null> } {
+export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport | null>; idle(): Promise<void> } {
   const { db, runner } = deps;
   const health = deps.health ?? realHealth;
   const now = deps.now ?? Date.now;
   let running = false;
   let proxyFails = 0;
   let speechFails = 0;
+  let diagnosing: Promise<void> = Promise.resolve();
 
   async function facts(watch: WatchSettings): Promise<WatchFacts> {
     const { proxy, speech } = await health();
     proxyFails = proxy ? 0 : proxyFails + 1;
     speechFails = speech ? 0 : speechFails + 1;
 
+    const held = new Set(runner.busy());
     const { rows } = await db.query<VideoRow>(
       `select s.id, s.title, s.source_url, s.status, s.attention, s.replay_of, s.config,
-              coalesce((select max(g.t1) from segments g where g.session_id = s.id), 0)::float8 as transcript_t
+              coalesce((select max(g.t1) from segments g where g.session_id = s.id), 0)::float8 as transcript_t,
+              exists (select 1 from talks t where t.stage_id = s.stage_id and t.archived_at is null) as has_schedule
          from sessions s
         where s.id = any($1::uuid[])
            or ((s.status = 'degraded' or s.attention is not null) and s.created_at > now() - make_interval(days => $2::int))
         order by s.created_at`,
-      [runner.busy(), SCAN_DAYS],
+      [[...held], SCAN_DAYS],
     );
     const watched = AGENTS.filter((agent) => !agent.internal);
     const videos: WatchFacts["videos"] = [];
     for (const row of rows) {
       const agents: WatchFacts["videos"][number]["agents"] = {};
-      for (const agent of watched) {
+      // A video nobody holds has no agents running: its runs are not read at all.
+      for (const agent of held.has(row.id) ? watched : []) {
         const slowMs = slowMsFor(watch, agent.id);
         const recent = await runs.listRuns(db, { agentId: agent.id, sessionId: row.id, limit: RUNS_PER_AGENT, slowMs });
         const reach = await db.query<{ t1: number }>(`select coalesce(max(window_t1), 0)::float8 as t1 from llm_calls where session_id = $1 and step = $2`, [row.id, agent.id]);
         agents[agent.id] = { runs: recent.map((run) => ({ id: run.id, status: runs.statusOf(run, slowMs), error: run.error })), lastWindowT1: reach.rows[0]?.t1 ?? 0 };
       }
       videos.push({
-        id: row.id, title: row.title ?? nameless(row.source_url), status: row.status, attention: row.attention, isReplay: row.replay_of !== null,
+        id: row.id, title: row.title ?? nameless(row.source_url), status: row.status, attention: row.attention, isReplay: row.replay_of !== null, held: held.has(row.id), hasSchedule: row.has_schedule,
         transcriptT: row.transcript_t, config: row.config ?? {}, agents,
       });
     }
@@ -167,11 +172,16 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
         if (!watch.enabled) return null;
         const report = await record(watch);
         if (report.opened.length > 0 || report.resolved.length > 0) log.warn(report, "incidents opened or resolved");
-        if (watch.diagnose) {
+        // Diagnoses are asked for after the pass and outside its guard, one at a time: a model that is slow or hangs
+        // must never stop the Watcher from looking. None while the proxy is failing: it could not answer, and the
+        // live agents need what it has left.
+        if (watch.diagnose && proxyFails === 0) {
           for (const id of report.opened) {
-            const incident = await incidents.get(db, id);
-            // Its own try: a diagnosis that cannot be written must not hide the incidents this pass recorded.
-            if (incident) await diagnose(incident, watch).catch((error) => log.warn({ incident: id, err: error instanceof Error ? error.message : String(error) }, "diagnosing an incident failed"));
+            diagnosing = diagnosing.then(async () => {
+              const incident = await incidents.get(db, id);
+              // Trouble filed under a system incident is explained by it already.
+              if (incident && incident.parent_id === null && incident.resolved_at === null) await diagnose(incident, watch);
+            }).catch((error) => log.warn({ incident: id, err: error instanceof Error ? error.message : String(error) }, "diagnosing an incident failed"));
           }
         }
         return report;
@@ -182,5 +192,7 @@ export function createWatcher(deps: WatcherDeps): { pass(): Promise<WatchReport 
         running = false;
       }
     },
+    /** Settles when every diagnosis asked for so far has been written or given up on. */
+    idle: () => diagnosing,
   };
 }

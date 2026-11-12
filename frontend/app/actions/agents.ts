@@ -10,7 +10,7 @@ import * as api from "@/lib/api-client";
 /** The Agents pages' forms. Built like every other admin action: back to the page, with what happened. */
 
 export async function resolveIncidentAction(form: FormData): Promise<void> {
-  await run(form, "/admin/agents", "Marked resolved. It will not be raised again while it lasts.", async () => {
+  await run(form, "/admin/agents", "Muted. It will not be raised again while it lasts, and it closes by itself when the trouble goes.", async () => {
     await api.resolveIncident(Number(text(form, "id")));
   });
 }
@@ -33,7 +33,11 @@ export async function saveInstructionsAction(form: FormData): Promise<void> {
       done = `Saved as ${version}. It is not in use yet.`;
       return;
     }
-    const result = await api.patchSettings(agent.id, { [agent.prompt_key]: version }, apply as api.Apply);
+    const key = agent.prompt_key;
+    // The version is saved by now. If putting it in use is refused, say both, or a second try would save it twice.
+    const result = await api.patchSettings(agent.id, { [key]: version }, apply as api.Apply).catch((error: unknown) => {
+      throw new Error(`Saved as ${version}, but it is not in use: ${error instanceof Error ? error.message : "the change was refused"}`);
+    });
     done = `Saved as ${version}. ${settingsDone(result)}`;
   });
 }
@@ -45,7 +49,7 @@ export async function saveSettingsAction(form: FormData): Promise<void> {
   await run(form, `/admin/agents/${id}`, () => done, async () => {
     const agent = await api.getAgent(id);
     if (!agent) throw new Error("No such agent");
-    const set = changedSettings(agent.settings, (key) => (form.has(`s:${key}`) ? String(form.get(`s:${key}`)) : null));
+    const set = changedSettings(agent.settings, (key) => (form.has(`s:${key}`) ? String(form.get(`s:${key}`)) : null), form.get("everything") === "on");
     if (Object.keys(set).length === 0) {
       done = "Nothing changed.";
       return;

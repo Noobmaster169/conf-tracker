@@ -9,7 +9,7 @@ type Video = WatchFacts["videos"][number];
 type Runs = Video["agents"][string]["runs"];
 
 const runs = (...statuses: ("ok" | "failed" | "slow")[]): Runs => statuses.map((status, i) => ({ id: 100 - i, status, error: status === "failed" ? `error ${100 - i}` : null }));
-const video = (over: Partial<Video> = {}): Video => ({ id: "v1", title: "Main Stage", status: "live", attention: null, isReplay: false, transcriptT: 0, config: {}, agents: {}, ...over });
+const video = (over: Partial<Video> = {}): Video => ({ id: "v1", title: "Main Stage", status: "live", attention: null, isReplay: false, held: true, hasSchedule: true, transcriptT: 0, config: {}, agents: {}, ...over });
 const facts = (over: Partial<WatchFacts> = {}): WatchFacts => ({ videos: [], proxyFails: 0, speechFails: 0, box: { ageS: 60, failed: null }, ...over });
 const found = (f: WatchFacts, s = settings) => evaluate(f, s, AGENTS);
 const rules = (f: WatchFacts, s = settings) => found(f, s).map((x) => x.rule);
@@ -107,4 +107,14 @@ it("the Watcher's own runs are never judged", () => {
 it("an agent that is failing is not also reported as quiet: the failures are why the transcript ran ahead", () => {
   const v = video({ transcriptT: 5000, agents: { track: { runs: runs("ok"), lastWindowT1: 5000 }, extract: { runs: runs("failed", "failed", "failed"), lastWindowT1: 0 } } });
   expect(found(facts({ videos: [v] })).map((f) => f.rule)).toEqual(["agent_failing"]);
+});
+
+it("the tracker is not quiet on a video whose stage has no schedule: it has nothing to track", () => {
+  const v = video({ hasSchedule: false, transcriptT: 5000, agents: { extract: { runs: runs("ok"), lastWindowT1: 5000 } } });
+  expect(found(facts({ videos: [v] }))).toEqual([]);
+});
+
+it("a video nobody holds is judged for its own state only: its agents are not running, so their old runs prove nothing", () => {
+  const v = video({ held: false, status: "degraded", transcriptT: 5000, agents: { extract: { runs: runs("failed", "failed", "failed"), lastWindowT1: 0 } } });
+  expect(found(facts({ videos: [v] })).map((f) => f.rule)).toEqual(["video_degraded"]);
 });

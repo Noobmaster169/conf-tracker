@@ -25,6 +25,10 @@ export interface WatchFacts {
     status: string;
     attention: string | null;
     isReplay: boolean;
+    /** The runner holds it: its agents are running. One it does not hold is judged for its own state only. */
+    held: boolean;
+    /** Its stage has sessions on its schedule. Without any, the tracker has nothing to track and makes no call. */
+    hasSchedule: boolean;
     /** Where the transcript reaches, in stream seconds. */
     transcriptT: number;
     config: Record<string, unknown>;
@@ -61,7 +65,8 @@ export function evaluate(facts: WatchFacts, settings: WatchSettings, agents: Age
   for (const video of facts.videos) {
     if (video.isReplay) continue;
     for (const agent of agents) {
-      if (agent.internal || agent.settingsScope !== "video") continue;
+      // Old runs prove nothing about agents that are not running.
+      if (!video.held || agent.internal || agent.settingsScope !== "video") continue;
       const seen = video.agents[agent.id] ?? { runs: [], lastWindowT1: 0 };
       const about = { agentId: agent.id, sessionId: video.id, parentRule: "proxy_down" as const };
       const failing = newestAll(seen.runs, settings.fail_runs, "failed");
@@ -72,7 +77,8 @@ export function evaluate(facts: WatchFacts, settings: WatchSettings, agents: Age
       const interval = agent.trigger.intervalKey ? Number(setting(agent, video.config, agent.trigger.intervalKey)) : Number.NaN;
       const on = setting(agent, video.config, agent.id) !== false;
       // A failing agent is not also quiet: its failures are why the transcript ran ahead of it.
-      if (!failing && CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
+      const idleByDesign = agent.id === "track" && !video.hasSchedule;
+      if (!failing && !idleByDesign && CAN_GO_QUIET.has(agent.id) && video.status === "live" && on && Number.isFinite(interval) && video.transcriptT - seen.lastWindowT1 > settings.quiet_intervals * interval) {
         add(found, "agent_quiet", `${agent.name} has gone quiet on ${video.title}`, {
           ...about,
           detail: `The transcript is ${Math.round(video.transcriptT - seen.lastWindowT1)} s past its last run.`,

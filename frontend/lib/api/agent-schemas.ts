@@ -33,8 +33,9 @@ export const AgentDetail = AgentCard.extend({
   reads: z.array(z.string()),
   writes: z.array(z.string()),
   settings_scope: z.enum(["video", "global"]),
-  prompt_key: z.string().nullable(),
-  model_key: z.string().nullable(),
+  // Optional: the dashboard deploys before the api does, and must read the older api's answer meanwhile.
+  prompt_key: z.string().nullish(),
+  model_key: z.string().nullish(),
   settings: z.array(AgentSetting),
   instructions: z.array(AgentInstructions),
 });

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import { agoText, clockText, dotClass, lastRunText } from "./agents";
-import { AgentCard } from "./api/agent-schemas";
+import { AgentCard, AgentDetail } from "./api/agent-schemas";
 
 const now = new Date("2026-11-12T12:00:00Z");
 
@@ -34,4 +34,10 @@ test("lastRunText: the Watcher having asked nothing is not the same as an agent 
   expect(lastRunText({ internal: true, last_run_at: null }, now)).toBe("nothing to look into yet");
   expect(lastRunText({ internal: false, last_run_at: null }, now)).toBe("has not run yet");
   expect(lastRunText({ internal: true, last_run_at: "2026-11-12T11:56:00Z" }, now)).toBe("4 min ago");
+});
+
+test("an agent's page still parses against a backend that does not yet say which settings name its instructions and model", () => {
+  const card = { id: "name", name: "Namer", role: "r", trigger: "t", internal: false, prompt_version: "v3", model: "sonnet", status: "ok", last_run_at: null, recent: [], open_incidents: 0 };
+  const detail = AgentDetail.parse({ ...card, reads: [], writes: [], settings_scope: "video", settings: [], instructions: [] });
+  expect(detail.prompt_key ?? null).toBeNull();
 });
