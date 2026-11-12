@@ -4,3 +4,4 @@ export * from "./api/conference";
 export * from "./api/pages";
 export * from "./api/sessions";
 export * from "./api/views";
+export * from "./api/agents";

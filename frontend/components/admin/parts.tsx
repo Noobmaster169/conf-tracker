@@ -10,7 +10,7 @@ export function Notice({ error, done }: { error?: string | string[]; done?: stri
   return null;
 }
 
-export function AdminTabs({ current }: { current: "videos" | "speakers" }) {
+export function AdminTabs({ current }: { current: "videos" | "speakers" | "agents" }) {
   const tab = (key: string, href: string, label: string) => (
     <Link href={href} aria-current={current === key ? "page" : undefined} className={`border-b-2 px-1 pb-2 font-medium ${current === key ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"}`}>
       {label}
@@ -20,6 +20,7 @@ export function AdminTabs({ current }: { current: "videos" | "speakers" }) {
     <div className="mb-8 flex gap-6 border-b border-line">
       {tab("videos", "/admin", "Stages and videos")}
       {tab("speakers", "/admin/speakers", "Speakers")}
+      {tab("agents", "/admin/agents", "Agents")}
     </div>
   );
 }
