@@ -2,6 +2,7 @@
 # Runs the live stack from anywhere, through its api. Nothing here needs the box.
 #   ops/ct help
 # Reads BACKEND_URL and API_SHARED_SECRET from frontend/.env.prod (or the file named by CT_ENV) and never prints them.
+# Every call says who it is (x-actor: claude-code, or CT_ACTOR), so the record of changes can name who made one.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${CT_ENV:-$ROOT/frontend/.env.prod}"
@@ -17,7 +18,7 @@ call() {
   local method="$1" path="$2" body="${3-}" out code
   out="$(mktemp)"
   if ! code=$(curl -sS -m "${CT_TIMEOUT:-60}" -o "$out" -w '%{http_code}' -X "$method" \
-    -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -H 'ngrok-skip-browser-warning: 1' \
+    -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -H 'ngrok-skip-browser-warning: 1' -H "x-actor: ${CT_ACTOR:-claude-code}" \
     ${body:+--data-binary "$body"} "$URL$path"); then
     rm -f "$out"
     echo "could not reach the api at all: the tunnel, the box or this network is down" >&2
@@ -89,6 +90,44 @@ names = {30: "info", 40: "WARN", 50: "ERROR", 60: "FATAL"}
 for l in json.load(sys.stdin):
     rest = {k: v for k, v in l.items() if k not in ("level", "time", "pid", "hostname", "module", "msg")}
     print(l.get("time"), names.get(l.get("level"), l.get("level")), l.get("module"), l.get("msg"), json.dumps(rest) if rest else "")'
+    ;;
+  agents) # ct agents: every agent in one line.
+    call GET /agents | python3 -c '
+import json, sys
+mark = {"ok": ".", "failed": "X", "slow": "s"}
+for a in json.load(sys.stdin):
+    strip = "".join(mark[r] for r in a["recent"]).rjust(24)
+    print("%-7s %-11s %s  %-4s %-7s last %s%s" % (a["status"], a["name"], strip, a["prompt_version"] or "-", a["model"] or "-", (a["last_run_at"] or "never")[:19], "   %d OPEN INCIDENT(S)" % a["open_incidents"] if a["open_incidents"] else ""))'
+    ;;
+  agent) # ct agent ID: what it is, its settings and its instructions.
+    call GET "/agents/$1" | python3 -c '
+import json, sys
+a = json.load(sys.stdin)
+print("%s (%s): %s\n%s\nreads: %s\nwrites: %s\n" % (a["name"], a["status"], a["role"], a["trigger"], "; ".join(a["reads"]), "; ".join(a["writes"])))
+for s in a["settings"]:
+    notes = [n for n in ("default %s" % json.dumps(s["default"]) if s["value"] != s["default"] else "", "read at a video\x27s next start" if s["fixed_at_start"] else "", "NOT VALID" if not s["valid"] else "") if n]
+    print("  %-26s %-22s %s" % (s["key"], json.dumps(s["value"]), ", ".join(notes)))
+print("\ninstructions: " + ", ".join("%s%s (%s)" % (i["version"], " IN USE" if i["in_use"] else "", i["source"] if i["exists"] else "DOES NOT EXIST") for i in a["instructions"]))'
+    ;;
+  calls) # ct calls ID [failed|slow] [n]: an agent's latest runs. `ct get /calls/N` opens one.
+    call GET "/agents/$1/calls?status=${2:-}&limit=${3:-20}" | python3 -c '
+import json, sys
+for r in json.load(sys.stdin):
+    print("%-7s %-6s %s  %-24s %5.1fs  %s" % (r["id"], r["status"], r["created_at"][:19], (r["session_title"] or r["session_id"][:8])[:24], r["latency_ms"] / 1000, r["result"]))'
+    ;;
+  incidents) # ct incidents [all]: what the Watcher found wrong; open ones unless `all`.
+    call GET "/incidents$([ "${1:-}" = all ] || echo '?open=1')" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+if not rows:
+    print("no open incidents")
+for i in rows:
+    state = "went away" if i["resolved_at"] else "marked resolved" if i["acknowledged_at"] else "OPEN"
+    print("#%-4s %-15s %s  (x%d, since %s%s)" % (i["id"], state, i["title"], i["count"], i["first_seen"][:19], ", call %s" % i["call_id"] if i["call_id"] else ""))
+    if i["detail"]:
+        print("      " + i["detail"][:200])
+    if i["diagnosis"]:
+        print("      the Watcher thinks: " + i["diagnosis"])'
     ;;
   get) call GET "$1" | pretty ;;
   post | put | patch | delete) call "$(echo "$cmd" | tr a-z A-Z)" "$1" "${2-}" | pretty ;;
@@ -172,6 +211,10 @@ print("registered %s/%s, model %s, %d characters" % (d["step"], d["version"], d[
 ops/ct: the live stack, through its api. What to use for what: CLAUDE.md at the root.
 
   status                         what is deployed, healthy, held back or failing, and the box's last report
+  incidents [all]                what the Watcher found wrong (open ones; `all` for the whole record)
+  agents                         every agent in one line: status, last 24 runs, instructions, model
+  agent ID                       one agent: its settings and instructions (track, name, extract, summarize, watch)
+  calls ID [failed|slow] [n]     an agent's latest runs; `get /calls/N` opens one with its input and output
   box                            the box's whole last report (log tails of every piece)
   logs [n] [level] [module] [text]   the api's own newest log lines, e.g. `logs 200 warn`
   get PATH                       any GET: `get '/videos?all=1'`, `get /ops/prompts`, `get /ops/config`

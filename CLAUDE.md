@@ -6,16 +6,34 @@ Everything is done through two doors, and both work from any machine:
 - **The api**, over its public URL, with `ops/ct` (reads `frontend/.env.prod`; never print its values).
 - **`git push` to `main`**: the box pulls it within three minutes (`deploy/auto-deploy.sh`), Vercel builds the frontend.
 
-Start every piece of live work with `ops/ct status`. It says what commit is running, whether a video is live, whether
-the model proxy and speech answer, how many model calls failed in the last hour, and what the box last reported.
+Start every piece of live work with `ops/ct status` and `ops/ct incidents`. The first says what commit is running,
+whether a video is live, whether the model proxy and speech answer, how many model calls failed in the last hour, and
+what the box last reported. The second is what the Watcher found wrong, each with what it thinks the cause and the
+fix are.
+
+## The agents
+
+Every model call is the work of an agent: the Tracker (`track`, which session is on stage), the Namer (`name`, who
+each voice is), the Extractor (`extract`, the claims), the Summarizer (`summarize`, a session's write-up) and the
+Watcher (`watch`, which looks at the others once a minute and records incidents). Admin › Agents shows each one;
+the same is on a terminal:
+
+- `ops/ct agents`: every agent in a line, with its last 24 runs (`.` ok, `X` failed, `s` slow).
+- `ops/ct agent extract`: its settings and instructions. `ops/ct calls extract failed`: its failed runs.
+- `ops/ct get /calls/ID`: one call with its input, its output and every attempt.
+- `ops/ct post /calls/ID/rerun '{"prompt_version":"v6"}'`, then `ops/ct get /reruns/N`: the same input sent again,
+  to judge a change before making it. It stores nothing but a note that it was tried.
+
+Every write says who made it (`ops/ct` sends `x-actor: claude-code`), and an agent's Activity lists it.
 
 ## The ladder: use the lowest rung that fixes it
 
 | The problem | The fix | Restarts anything? |
 | --- | --- | --- |
 | A wrong name, claim, title, schedule, what is on stage | The correction routes in `README.md` (`ops/ct put/patch/delete ...`), or the Admin pages | No |
-| A prompt gives bad answers | `ops/ct prompt-put extract v6 file.md`, then `ops/ct patch /sessions/ID/config '{"extract_prompt":"v6"}'` for each running video and `ops/ct patch /ops/config '{"extract_prompt":"v6"}'` for the ones started later | No. The running video uses it at its next run |
-| A threshold or model (`name_floor`, `track_switch_confidence`, `extract_model`, ...) | The same two `patch` calls. `ops/ct get /ops/config` lists every key and its default | No |
+| An agent gives bad answers | Read them first: `ops/ct calls extract failed`, `ops/ct get /calls/ID`. Then `ops/ct prompt-put extract v6 file.md`, try it on a bad call (`ops/ct post /calls/ID/rerun '{"prompt_version":"v6"}'`), and put it in use: `ops/ct patch /agents/extract/settings '{"set":{"extract_prompt":"v6"},"apply":"all"}'`. Or all of it on the agent's page in Admin | No. A running video uses it at its next run |
+| A threshold or model (`name_floor`, `track_switch_confidence`, `extract_model`, ...) | `ops/ct patch /agents/name/settings '{"set":{"name_floor":0.6},"apply":"all"}'`. `apply` is `all`, `new` (videos started later) or `running` (the ones running now, and ended ones still filling a gap). `ops/ct agent name` lists every key and its default; a null value takes a key back to its default | No. An interval or an on/off switch waits for a video's next start, and the answer says so |
+| The Watcher raises too much or too little | Its thresholds are its settings: `ops/ct agent watch`, `ops/ct patch /agents/watch/settings '{"set":{"fail_runs":5}}'`. `"enabled": false` stops it | No |
 | Something looks wrong and you do not know why | `ops/ct logs 200 warn`, `ops/ct sql "select ..."`, `ops/ct get /calls/ID`, `ops/ct box` | No |
 | The dashboard (anything under `frontend/`) | Commit, push | No video is touched |
 | Backend code (anything under `backend/`) | Commit, push, `ops/ct wait-deploy` | **Yes: an api restart costs each running video a short catch-up.** So the box holds the deploy back while one runs and ships it when none does |
@@ -77,6 +95,8 @@ and cannot stop a deploy.
 
 Say these plainly to the user instead of trying:
 
+- The Watcher runs inside the api. When the tunnel, the box or the api is down, it is down too and records nothing,
+  and Admin cannot load to show it. Nothing here notices that from outside.
 - The tunnel (ngrok) down or over its plan's limits: the api is unreachable, so `ops/ct` is blind. `git push` still
   deploys, and a one-shot script still runs, but nothing reports back.
 - The box off, its cron gone, or its network down: `ops/ct status` shows the box report going stale (the api itself

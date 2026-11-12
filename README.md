@@ -12,7 +12,7 @@ when something important is announced. Design: `docs/superpowers/specs/2026-11-0
 | Monitor (`/monitor`) | The newest claims from every stage and who made them. Refreshes itself. |
 | Sessions (`/sessions`) | Each stage's schedule. A session that has finished opens to a written summary and its claims. |
 | Speakers (`/speakers`) | Everyone heard or scheduled. A speaker's page lists everything they have claimed. |
-| Admin (`/admin`) | Stages and their schedules, starting a video on a stage, correcting what is on stage, speaker profiles. |
+| Admin (`/admin`) | Stages and their schedules, starting a video on a stage, correcting what is on stage, speaker profiles. Agents (`/admin/agents`): every agent that asks the model, each call with its input and output, its instructions and settings, and what the Watcher found wrong. |
 
 How it fits together: the admin creates a **stage** (one stage of one conference on one day) and pastes its
 schedule. A **video** is bound to a stage. While it runs, a tracker reads the last minutes of transcript against the
@@ -39,6 +39,26 @@ delete is for good.
 | `DELETE /sessions/:id` | Removes a video with its transcript, voices, claims, timeline, summaries and model calls. Refused (409) while it runs or has replays. The recording kept by the speech service stays on the box. |
 | `DELETE /stages/:id` | Removes a stage and its schedule. Refused (400) while a video is on it or still holds a stretch of its timeline; hide it instead (`PUT /stages/:id`). People stay. |
 | `POST /people/:id/conferences`, `DELETE /people/:id/conferences/:conference` | Lists a person for a conference they have no tracked session at yet (`{ "conference": "Breakpoint 2026" }`), such as a speaker on the official list whose talk is not announced, or takes that listing away. The Speakers page groups people by these listings, the schedule and the videos they were heard in. |
+
+## The agents
+
+Every model call is made by an agent, defined once in `backend/src/agents/definitions/` (how to add one:
+`backend/src/agents/README.md`). An agent's id is the `step` of its calls. Design:
+`docs/superpowers/specs/2026-11-12-agents-design.md`.
+
+| Call | What it does |
+| --- | --- |
+| `GET /agents`, `GET /agents/:id` | Every agent with its last 24 runs and open incidents; one agent with its settings (default, value, whether it waits for a video's next start) and its instructions' versions. |
+| `GET /agents/:id/calls?session=&status=failed\|slow&before=&limit=` | Its runs, newest first, each with one line saying what came of it. A run is the last attempt of a call that was retried. |
+| `GET /calls/:id` | One call: input, output, every attempt of its run, what it caused, and what was tried on it. |
+| `GET /agents/:id/activity` | Its runs and what was changed about it, with who made each change (`x-actor`), in one line of time. |
+| `PATCH /agents/:id/settings` | `{ "set": { "name_floor": 0.6 }, "apply": "all" \| "new" \| "running" }`. Checked whole before anything is written. `running` includes ended videos still filling a gap. |
+| `POST /calls/:id/rerun`, `GET /reruns/:id` | Sends a stored call again with `{ "prompt_version"?, "model"? }` and is polled for the answer. Stores nothing in `llm_calls`, claims, names, the timeline or summaries. Not offered for the summarizer. |
+| `GET /incidents?open=1`, `POST /incidents/:id/resolve` | What the Watcher found. Marking one resolved keeps it from being raised again while the trouble lasts; it closes for good when the trouble goes. |
+
+The Watcher (`backend/src/ingest/watcher.ts`, rules in `watch-rules.ts`) passes once a minute inside the api. It finds
+trouble by fixed rules, so it works with the model down, and asks the model only to say what is probably wrong with a
+new incident on a video.
 
 ## Running it with no access to the box
 
