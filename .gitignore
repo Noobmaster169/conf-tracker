@@ -1,4 +1,6 @@
 node_modules/
+# A link named node_modules (a worktree borrowing another checkout's install) is not a directory, so the line above misses it.
+node_modules
 .env
 .env.*
 !.env.example
