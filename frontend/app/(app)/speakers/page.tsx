@@ -9,7 +9,7 @@ import { photoSrc } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
 
-/** A speaker's photo filling a square, or their initials large on the colour that is always theirs. */
+/** A speaker's photo filling a square, or, without one, their initials on a dark stage lit in the colour that is theirs. */
 function Portrait({ name, photoUrl }: { name: string; photoUrl: string | null }) {
   const src = photoSrc(photoUrl);
   if (src) {
@@ -18,8 +18,10 @@ function Portrait({ name, photoUrl }: { name: string; photoUrl: string | null })
     return <img src={src} alt="" loading="lazy" className="aspect-square w-full bg-sunk object-cover transition-transform duration-300 group-hover:scale-[1.03]" />;
   }
   return (
-    <span aria-hidden className="avatar-initials flex aspect-square w-full items-center justify-center text-5xl font-semibold" style={{ "--hue": nameHue(name) } as CSSProperties}>
-      {initials(name)}
+    <span aria-hidden className="portrait-blank flex aspect-square w-full items-center justify-center" style={{ "--hue": nameHue(name) } as CSSProperties}>
+      <span className="portrait-blank-ring flex size-[46%] items-center justify-center rounded-full text-[clamp(1.75rem,5vw,2.75rem)] font-medium tracking-tight transition-transform duration-300 group-hover:scale-[1.04]">
+        {initials(name)}
+      </span>
     </span>
   );
 }
