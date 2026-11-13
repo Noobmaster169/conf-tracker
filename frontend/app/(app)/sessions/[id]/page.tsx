@@ -112,7 +112,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
           ))}
         {tab === "summary" &&
           (summary ? (
-            <section aria-label="Summary" className="sm:rounded-xl sm:border sm:border-line sm:bg-surface sm:p-8">
+            <section aria-label="Summary" className="-mx-4 bg-sunk px-4 py-6 sm:mx-0 sm:bg-surface sm:rounded-xl sm:border sm:border-line sm:p-8">
               <Summary content={summary.summary.content} />
             </section>
           ) : (
