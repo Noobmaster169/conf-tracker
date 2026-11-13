@@ -21,7 +21,7 @@ export function TalkRow({ card, showStage = false }: { card: TalkCard; showStage
     >
       <span className="mb-1 text-[13px] text-ink-soft sm:mb-0 sm:pt-0.5">{time ?? ""}</span>
       <span className="min-w-0">
-        {showStage && <span className="mb-0.5 block truncate text-[13px] font-medium text-ink-soft">{stage.name}</span>}
+        {showStage && <span className="mb-0.5 block truncate text-[13px] font-medium text-accent">{`${stage.conference}, ${stage.name}`}</span>}
         <span className="block font-semibold leading-snug group-hover:text-accent">{talk.title}</span>
         {names && <span className="mt-0.5 block truncate text-[13px] text-ink-soft">{names}</span>}
         {card.headline && <span className="mt-2 block max-w-[75ch] text-ink-soft">{card.headline}</span>}

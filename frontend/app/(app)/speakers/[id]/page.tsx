@@ -32,13 +32,12 @@ export default async function SpeakerPage({ params, searchParams }: PageProps<"/
   if (!detail) notFound();
   const { person, talks, claims } = detail;
 
-  // With nothing asked for, open on the latest event that has claims to read, or else the latest event.
+  // Claims are shown one event at a time. With nothing asked for, open on the latest event that has claims to read, or else the latest event.
   const events = eventsOf(talks);
   const asked = (await searchParams).event;
   const event =
     events.find((e) => e === asked) ?? events.find((e) => claims.some((c) => eventOfClaim(c, talks) === e)) ?? events[0] ?? null;
-  const shownTalks = event ? talks.filter((c) => c.stage.conference === event) : talks;
-  const shownClaims = event ? claims.filter((c) => eventOfClaim(c, talks) === event) : claims;
+  const shownClaims = event && events.length > 1 ? claims.filter((c) => eventOfClaim(c, talks) === event) : claims;
 
   return (
     <Page narrow>
@@ -55,22 +54,13 @@ export default async function SpeakerPage({ params, searchParams }: PageProps<"/
         </div>
       </header>
 
-      {events.length > 0 && (
-        <div className="mt-8">
-          <Tabs
-            label="Event"
-            items={events.map((e) => ({ href: `/speakers/${person.id}?event=${encodeURIComponent(e)}`, label: e, current: e === event }))}
-          />
-        </div>
-      )}
-
-      {shownTalks.length > 0 && (
-        <section aria-labelledby="sessions" className={events.length > 0 ? "" : "mt-10"}>
+      {talks.length > 0 && (
+        <section aria-labelledby="sessions" className="mt-10">
           <h2 id="sessions" className="mb-3 text-lg font-semibold">
             Sessions
           </h2>
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {shownTalks.map((card) => (
+            {talks.map((card) => (
               <li key={card.talk.id}>
                 <TalkRow card={card} showStage />
               </li>
@@ -83,6 +73,12 @@ export default async function SpeakerPage({ params, searchParams }: PageProps<"/
         <h2 id="claims" className="mb-4 text-lg font-semibold">
           Tracked Claims
         </h2>
+        {events.length > 1 && (
+          <Tabs
+            label="Event"
+            items={events.map((e) => ({ href: `/speakers/${person.id}?event=${encodeURIComponent(e)}#claims`, label: e, current: e === event }))}
+          />
+        )}
         {shownClaims.length === 0 ? (
           <Empty>Nothing yet. Claims appear here once {person.name} has been heard and identified on a tracked stage.</Empty>
         ) : (
