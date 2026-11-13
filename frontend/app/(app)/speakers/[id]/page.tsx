@@ -6,7 +6,7 @@ import { Empty, Page, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
 import { TalkRow } from "@/components/ui/talk-row";
 import { getPerson, type FeedItem, type TalkCard } from "@/lib/api-client";
-import { titleAndOrg } from "@/lib/format";
+import { titleAndOrg, xHandle } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +47,11 @@ export default async function SpeakerPage({ params, searchParams }: PageProps<"/
         <div className="min-w-0">
           <h1 className="text-[32px] font-bold leading-tight tracking-tight">{person.name}</h1>
           {titleAndOrg(person) && <p className="text-[17px] text-ink-soft">{titleAndOrg(person)}</p>}
+          {person.x_url && (
+            <a href={person.x_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[15px] text-accent hover:underline">
+              {xHandle(person.x_url)}
+            </a>
+          )}
         </div>
       </header>
 

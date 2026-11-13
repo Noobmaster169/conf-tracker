@@ -192,7 +192,14 @@ test("the admin area builds a stage, pastes a schedule, edits a talk, corrects w
 
     const raj = edited.body.speakers[0];
     const person = await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Raj Gokal", org: "Solana Labs", title: "Co-Founder", photo_url: "https://example.com/raj.jpg" });
-    expect(person.body).toEqual({ id: raj.id, name: "Raj Gokal", org: "Solana Labs", title: "Co-Founder", photo_url: "https://example.com/raj.jpg" });
+    expect(person.body).toEqual({ id: raj.id, name: "Raj Gokal", org: "Solana Labs", title: "Co-Founder", photo_url: "https://example.com/raj.jpg", x_url: null });
+    // An X link is set, kept by a write that leaves it out, shown on the schedule, and taken away by "".
+    const withX = await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Raj Gokal", x_url: "https://x.com/rajgokal" });
+    expect(withX.body.x_url).toBe("https://x.com/rajgokal");
+    expect((await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Raj Gokal", org: "Solana Labs" })).body.x_url).toBe("https://x.com/rajgokal");
+    expect((await talks.get(tx, intro.id))!.speakers.map((s) => s.x_url)).toContain("https://x.com/rajgokal");
+    expect((await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Raj Gokal", x_url: "" })).body.x_url).toBeNull();
+    expect((await request(app).put(`/people/${raj.id}`).set(auth).send({ name: "Raj Gokal", x_url: "not a link" })).status).toBe(400);
     // Off the schedule: there is nothing to summarise.
     expect((await request(app).post(`/talks/${intro.id}/summary`).set(auth)).status).toBe(404);
     // Last, because the refused write aborts the transaction this test runs in: two people cannot share a name.

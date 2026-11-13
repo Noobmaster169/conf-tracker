@@ -44,6 +44,9 @@ export default async function AdminSpeakersPage({ searchParams }: PageProps<"/ad
                   <input name="photo_url" type="url" defaultValue={isStoredPhoto(person.photo_url) ? "" : (person.photo_url ?? "")} placeholder="https://..." className="field" />
                 </Field>
                 {isStoredPhoto(person.photo_url) && <input type="hidden" name="photo_stored" value={person.photo_url ?? ""} />}
+                <Field label="X profile link">
+                  <input name="x_url" type="url" defaultValue={person.x_url ?? ""} placeholder="https://x.com/..." className="field" />
+                </Field>
                 <div className="sm:col-span-2">
                   <SubmitButton working="Saving">Save speaker</SubmitButton>
                 </div>

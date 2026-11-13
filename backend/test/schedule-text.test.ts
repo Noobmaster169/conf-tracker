@@ -36,7 +36,7 @@ test("a schedule written back out parses to the same talks", () => {
   const parsed = parseSchedule(text).talks;
   const asTalks: Talk[] = parsed.map((t, i) => ({
     id: i + 1, stage_id: "s", title: t.title, description: "", kind: t.kind, starts_at: t.starts_at, ends_at: t.ends_at, position: i,
-    speakers: t.speakers.map((s, j) => ({ id: j + 1, name: s.name, org: s.org, title: s.title, photo_url: null, role: s.role })),
+    speakers: t.speakers.map((s, j) => ({ id: j + 1, name: s.name, org: s.org, title: s.title, photo_url: null, x_url: null, role: s.role })),
   }));
   expect(parseSchedule(formatSchedule(asTalks)).talks).toEqual(parsed);
 });

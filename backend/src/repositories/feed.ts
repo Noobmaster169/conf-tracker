@@ -33,7 +33,7 @@ with recursive ${SURVIVOR_CTE},
 feed as (
   select ${claimRepo.COLUMNS.split(", ").map((c) => `c.${c}`).join(", ")},
          sv.name as speaker_name, p.id as person_id, p.name as person_name, p.org as person_org, p.title as person_title,
-         p.photo_url as person_photo_url, k.talk_id, t.title as talk_title,
+         p.photo_url as person_photo_url, p.x_url as person_x_url, k.talk_id, t.title as talk_title,
          ss.source_url, ss.title as video_title, ss.started_at as video_started_at, coalesce(sg.hidden, false) as stage_hidden,
          ss.stage_id, coalesce(sg.day, (coalesce(ss.started_at, ss.created_at) at time zone 'UTC')::date) as video_day
   from claims c
@@ -55,6 +55,7 @@ interface Row extends claimRepo.Row {
   person_org: string | null;
   person_title: string | null;
   person_photo_url: string | null;
+  person_x_url: string | null;
   talk_id: string | null;
   talk_title: string | null;
   source_url: string | null;
@@ -66,7 +67,7 @@ const toItem = (row: Row): FeedItem =>
   FeedItem.parse({
     ...claimRepo.toClaim(row),
     speaker_name: row.speaker_name,
-    person: row.person_id === null ? null : { id: Number(row.person_id), name: row.person_name, org: row.person_org, title: row.person_title, photo_url: row.person_photo_url },
+    person: row.person_id === null ? null : { id: Number(row.person_id), name: row.person_name, org: row.person_org, title: row.person_title, photo_url: row.person_photo_url, x_url: row.person_x_url },
     talk: row.talk_id === null ? null : { id: Number(row.talk_id), title: row.talk_title },
     video: {
       session_id: row.session_id,

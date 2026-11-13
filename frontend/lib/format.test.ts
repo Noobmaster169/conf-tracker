@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatDay, formatDuration, formatT, initials, plannedTime, titleAndOrg } from "./format";
+import { formatDay, formatDuration, formatT, initials, plannedTime, titleAndOrg, xHandle } from "./format";
 
 test.each([
   [0, "00:00"],
@@ -39,4 +39,11 @@ test("readableDescription drops the schedule's format label and what is not a se
   expect(readableDescription(null)).toBeNull();
   expect(readableDescription("Product Keynote. A major announcement from the Temporal team.")).toBe("A major announcement from the Temporal team.");
   expect(readableDescription("Tokenisation is easy. Utilization is hard. Kash Dhana discusses it.")).toBe("Tokenisation is easy. Utilization is hard. Kash Dhana discusses it.");
+});
+
+test("an X profile link reads as its handle; anything else is shown as given", () => {
+  expect(xHandle("https://x.com/aeyakovenko")).toBe("@aeyakovenko");
+  expect(xHandle("https://twitter.com/rajgokal/")).toBe("@rajgokal");
+  expect(xHandle("https://www.x.com/Luke_Truitt?lang=en")).toBe("@Luke_Truitt");
+  expect(xHandle("https://example.com/someone")).toBe("https://example.com/someone");
 });

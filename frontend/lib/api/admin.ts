@@ -80,6 +80,7 @@ export interface PersonInput {
   org: string | null;
   title: string | null;
   photo_url: string | null;
+  x_url: string | null;
 }
 
 export async function removePerson(id: number): Promise<void> {

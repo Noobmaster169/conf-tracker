@@ -11,13 +11,13 @@ export interface TalkRow {
   starts_at: string | null;
   ends_at: string | null;
   position: number;
-  speakers: { id: number; name: string; org: string | null; title: string | null; photo_url: string | null; role: string }[];
+  speakers: { id: number; name: string; org: string | null; title: string | null; photo_url: string | null; x_url: string | null; role: string }[];
 }
 
 // Speakers come along as one JSON column, in the order they were entered (moderators and hosts after the speakers).
 export const FIELDS = `t.id, t.stage_id, t.title, t.description, t.kind, t.starts_at, t.ends_at, t.position,
     coalesce((
-      select json_agg(json_build_object('id', p.id, 'name', p.name, 'org', p.org, 'title', p.title, 'photo_url', p.photo_url, 'role', ts.role)
+      select json_agg(json_build_object('id', p.id, 'name', p.name, 'org', p.org, 'title', p.title, 'photo_url', p.photo_url, 'x_url', p.x_url, 'role', ts.role)
                       order by (ts.role <> 'speaker'), p.id)
       from talk_speakers ts join people p on p.id = ts.person_id where ts.talk_id = t.id
     ), '[]'::json) as speakers`;

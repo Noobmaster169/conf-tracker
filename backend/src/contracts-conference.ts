@@ -13,6 +13,7 @@ export const Person = z.object({
   org: z.string().nullable(),
   title: z.string().nullable(),
   photo_url: z.string().nullable(),
+  x_url: z.string().nullable(),
 });
 export type Person = z.infer<typeof Person>;
 
@@ -123,7 +124,15 @@ export type StageBody = z.infer<typeof StageBody>;
 
 // A photo is a link the admin found, or the path of one stored here (PUT /people/:id/photo).
 const photoUrl = z.union([z.url().max(2000), z.string().regex(/^\/people\/\d+\/photo(\?v=\d+)?$/)]);
-export const PersonBody = z.object({ name: text(200).min(1), org: optionalText(200), title: optionalText(200), photo_url: photoUrl.nullish().transform((v) => v ?? null) });
+// A link to the person's X (Twitter) profile. Left out of a write, the stored one stays; null or "" takes it away.
+const xUrl = z.preprocess((v) => (v === "" ? null : v), z.url({ protocol: /^https?$/ }).max(500).nullable().optional());
+export const PersonBody = z.object({
+  name: text(200).min(1),
+  org: optionalText(200),
+  title: optionalText(200),
+  photo_url: photoUrl.nullish().transform((v) => v ?? null),
+  x_url: xUrl,
+});
 export type PersonBody = z.infer<typeof PersonBody>;
 
 // PUT /people/:id/photo: the image itself, base64, so it travels as JSON like every other body. About 700 KB at most.

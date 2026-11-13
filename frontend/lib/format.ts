@@ -35,6 +35,12 @@ export function titleAndOrg(person: { title: string | null; org: string | null }
   return [person.title, person.org].filter(Boolean).join(", ") || null;
 }
 
+/** "@handle" for a link to an X (Twitter) profile; the link itself when it is not one. */
+export function xHandle(url: string): string {
+  const match = /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/@?([A-Za-z0-9_]+)\/?(?:[?#].*)?$/.exec(url.trim());
+  return match ? `@${match[1]}` : url;
+}
+
 /** The still YouTube keeps for every video. It is letterboxed 4:3, so it is shown cropped to 16:9. */
 export function thumbnailUrl(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;

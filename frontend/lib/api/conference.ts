@@ -4,7 +4,7 @@ import { z } from "zod";
  * The conference layer, mirrored by hand from backend/src/contracts-conference.ts. Change both or neither.
  * A "talk" is one scheduled conference session; the pages call it a session.
  */
-export const Person = z.object({ id: z.number(), name: z.string(), org: z.string().nullable(), title: z.string().nullable(), photo_url: z.string().nullable() });
+export const Person = z.object({ id: z.number(), name: z.string(), org: z.string().nullable(), title: z.string().nullable(), photo_url: z.string().nullable(), x_url: z.string().nullish() });
 export type Person = z.infer<typeof Person>;
 
 export const Stage = z.object({ id: z.string(), conference: z.string(), name: z.string(), day: z.string().nullable(), description: z.string(), hidden: z.boolean().default(false), created_at: z.string() });
