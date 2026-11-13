@@ -72,8 +72,8 @@ export default async function SessionsPage({ searchParams }: PageProps<"/session
         <Empty>No schedule yet. An admin adds a stage and its sessions from the Admin page.</Empty>
       ) : (
         <>
-          <nav aria-label="Day" className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <ul className="flex gap-2">
+          <nav aria-label="Day" className="no-scrollbar -mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+            <ul className="flex gap-2 sm:flex-wrap">
               {days.map((d) => {
                 const { weekday, date } = dayLabel(d.day);
                 const current = d.day === day.day;
@@ -99,8 +99,8 @@ export default async function SessionsPage({ searchParams }: PageProps<"/session
             </ul>
           </nav>
 
-          <nav aria-label="Stage" className="-mx-4 mb-6 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
-            <ul className="flex gap-1">
+          <nav aria-label="Stage" className="no-scrollbar -mx-4 mb-6 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+            <ul className="flex gap-1 sm:flex-wrap">
               {day.stages.map((s) => {
                 const current = s.stage.id === stage.stage.id;
                 return (
@@ -108,7 +108,7 @@ export default async function SessionsPage({ searchParams }: PageProps<"/session
                     <Link
                       href={href(day.day, s.stage.id)}
                       aria-current={current ? "page" : undefined}
-                      className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 font-semibold transition-colors ${
+                      className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 font-semibold sm:px-4 transition-colors ${
                         current ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"
                       }`}
                     >

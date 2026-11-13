@@ -91,6 +91,14 @@ body {
   border-radius: 4px;
 }
 
+/* A row that scrolls sideways on a phone, swiped by touch, with no scrollbar drawn under it. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* The one moving thing in the app: the dot beside a stage that is live. */
 @keyframes live-pulse {
   0%,

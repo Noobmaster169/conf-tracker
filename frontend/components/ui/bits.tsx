@@ -72,15 +72,15 @@ export interface TabItem {
  */
 export function Tabs({ label, items }: { label: string; items: TabItem[] }) {
   return (
-    <nav aria-label={label} className="-mx-4 mb-6 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
-      <ul className="flex gap-1">
+    <nav aria-label={label} className="no-scrollbar -mx-4 mb-6 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+      <ul className="flex gap-1 sm:flex-wrap">
         {items.map((item) => (
           <li key={item.href} className="shrink-0">
             <Link
               href={item.href}
               scroll={false}
               aria-current={item.current ? "page" : undefined}
-              className={`-mb-px flex min-h-11 items-center gap-2 border-b-2 px-4 font-semibold transition-colors ${
+              className={`-mb-px flex min-h-11 items-center gap-2 border-b-2 px-3 font-semibold sm:px-4 transition-colors ${
                 item.current ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"
               }`}
             >
