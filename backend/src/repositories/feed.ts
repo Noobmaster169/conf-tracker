@@ -34,7 +34,8 @@ feed as (
   select ${claimRepo.COLUMNS.split(", ").map((c) => `c.${c}`).join(", ")},
          sv.name as speaker_name, p.id as person_id, p.name as person_name, p.org as person_org, p.title as person_title,
          p.photo_url as person_photo_url, k.talk_id, t.title as talk_title,
-         ss.source_url, ss.title as video_title, ss.started_at as video_started_at, coalesce(sg.hidden, false) as stage_hidden
+         ss.source_url, ss.title as video_title, ss.started_at as video_started_at, coalesce(sg.hidden, false) as stage_hidden,
+         ss.stage_id, coalesce(sg.day, (coalesce(ss.started_at, ss.created_at) at time zone 'UTC')::date) as video_day
   from claims c
   join sessions ss on ss.id = c.session_id
   left join stages sg on sg.id = ss.stage_id
@@ -90,6 +91,8 @@ export async function list(db: Queryable, query: FeedQuery): Promise<Feed> {
   if (query.person !== undefined) conds.push(`f.person_id = ${p(query.person)}`);
   if (query.talk !== undefined) conds.push(`f.talk_id = ${p(query.talk)}`);
   if (query.session !== undefined) conds.push(`f.session_id = ${p(query.session)}`);
+  if (query.stage !== undefined) conds.push(`f.stage_id = ${p(query.stage)}`);
+  if (query.day !== undefined) conds.push(`f.video_day = ${p(query.day)}::date`);
   // A hidden stage's claims are read only by asking for its video or one of its talks, never met in a list.
   if (query.session === undefined && query.talk === undefined) conds.push("not f.stage_hidden");
   const where = conds.length ? `where ${conds.join(" and ")}` : "";

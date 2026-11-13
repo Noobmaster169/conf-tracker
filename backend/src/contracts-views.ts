@@ -24,6 +24,9 @@ export const FeedQuery = z.object({
   person: z.coerce.number().int().positive().optional(),
   talk: z.coerce.number().int().positive().optional(),
   session: z.uuid().optional(),
+  // The Monitor's day and stage: a video's day is its stage's, or the day it started (UTC) when it has no stage or the stage no day.
+  stage: z.uuid().optional(),
+  day: z.iso.date().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type FeedQuery = z.output<typeof FeedQuery>;
@@ -38,6 +41,10 @@ export const VideoCard = z.object({
   gaps: z.array(Gap),
   // How far behind the stream a running video's last stored health said it was; null when stopped or unknown.
   behind_s: z.number().nullable(),
+  // The newest talk the tracker placed in the video, running or not: what an ended stage last had on.
+  last_talk: z.object({ id: z.number(), title: z.string() }).nullable(),
+  // The newest picture of the stage that is not hidden; null without R2 or before the first grab.
+  frame: z.object({ url: z.string(), thumb_url: z.string(), t: z.number(), created_at: z.string() }).nullable(),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

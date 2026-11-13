@@ -20,12 +20,19 @@ interface VideoRow extends sessions.SessionRow {
   claim_count: number;
   duration_s: number;
   behind_s: number | null;
+  last_id: string | null;
+  last_title: string | null;
+  frame_key: string | null;
+  frame_thumb_key: string | null;
+  frame_t: number | null;
+  frame_at: Date | null;
 }
 
 /** Every video ever tracked, newest first. Replays are experiments and are left out, and so are a hidden stage's videos unless asked for. */
-export async function videos(db: Queryable, includeHidden = false): Promise<VideoCard[]> {
+export async function videos(db: Queryable, includeHidden = false, frameUrl: ((key: string) => string) | null = null): Promise<VideoCard[]> {
   const { rows } = await db.query<VideoRow>(
-    `select ${S_COLUMNS}, ${STAGE_JSON}, n.id as now_id, n.title as now_title,
+    `select ${S_COLUMNS}, ${STAGE_JSON}, n.id as now_id, n.title as now_title, l.id as last_id, l.title as last_title,
+       fr.key as frame_key, fr.thumb_key as frame_thumb_key, fr.t as frame_t, fr.created_at as frame_at,
        (select count(*) from claims c where c.session_id = s.id and c.status = 'ok')::int as claim_count,
        coalesce((select max(t1) from segments where session_id = s.id), 0)::float8 as duration_s,
        case when s.status in ('starting', 'live', 'recovering') then
@@ -37,6 +44,13 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
        select t.id, t.title from talk_spans k join talks t on t.id = k.talk_id
        where k.session_id = s.id and k.t1 is null and k.state = 'talk' order by k.id desc limit 1
      ) n on true
+     left join lateral (
+       select t.id, t.title from talk_spans k join talks t on t.id = k.talk_id
+       where k.session_id = s.id and k.state = 'talk' order by k.t0 desc, k.id desc limit 1
+     ) l on true
+     left join lateral (
+       select f.key, f.thumb_key, f.t, f.created_at from frames f where f.session_id = s.id and not f.hidden order by f.t desc, f.id desc limit 1
+     ) fr on true
      where s.replay_of is null and ($1 or not coalesce(g.hidden, false))
      order by s.created_at desc limit 200`,
     [includeHidden],
@@ -51,6 +65,11 @@ export async function videos(db: Queryable, includeHidden = false): Promise<Vide
       duration_s: row.duration_s,
       gaps: open.get(row.id) ?? [],
       behind_s: row.behind_s,
+      last_talk: row.last_id === null ? null : { id: Number(row.last_id), title: row.last_title },
+      frame:
+        frameUrl && row.frame_key && row.frame_thumb_key && row.frame_t !== null && row.frame_at
+          ? { url: frameUrl(row.frame_key), thumb_url: frameUrl(row.frame_thumb_key), t: row.frame_t, created_at: row.frame_at.toISOString() }
+          : null,
     }),
   );
 }

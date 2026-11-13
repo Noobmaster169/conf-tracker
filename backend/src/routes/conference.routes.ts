@@ -12,13 +12,13 @@ import * as summaries from "../repositories/summaries";
 const PAGE_CLAIMS = 200;
 
 /** What the app's pages read: the video cards, the claims feed, people and the schedule with its summaries. Read-only. */
-export function conferenceRouter({ db }: { db: Queryable }): Router {
+export function conferenceRouter({ db, frameUrl = null }: { db: Queryable; frameUrl?: ((key: string) => string) | null }): Router {
   const router = Router();
 
   // ?all=1 is the admin area's list: it includes the videos of hidden stages.
   router.get("/videos", async (req, res, next) => {
     try {
-      res.json(await cards.videos(db, req.query.all === "1"));
+      res.json(await cards.videos(db, req.query.all === "1", frameUrl));
     } catch (error) {
       next(error);
     }
