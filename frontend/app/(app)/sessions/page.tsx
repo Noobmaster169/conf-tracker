@@ -67,7 +67,7 @@ export default async function SessionsPage({ searchParams }: PageProps<"/session
 
   return (
     <Page>
-      <PageHeader title="Sessions" lead="The schedule of every stage. Pick a day, then a stage. A session that has finished opens to its written summary." />
+      <PageHeader title="Sessions" lead="Every stage, day by day. Open a session for its claims, summary and pictures." />
       {!day || !stage ? (
         <Empty>No schedule yet. An admin adds a stage and its sessions from the Admin page.</Empty>
       ) : (

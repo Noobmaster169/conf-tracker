@@ -8,7 +8,7 @@ import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk, getTalkFrames } from "@/lib/api-client";
-import { formatDay, formatT, plannedTime, plural, titleAndOrg } from "@/lib/format";
+import { formatDay, plannedTime, plural, titleAndOrg } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -50,24 +50,24 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
   return (
     <Page narrow>
-      <p className="mb-2 text-ink-soft">
-        <Link href="/sessions" className="hover:text-accent hover:underline">
-          Sessions
-        </Link>
-        <span className="mx-2 text-ink-faint">/</span>
-        {stage.conference}, {stage.name}
+      <p className="mb-2 text-[14px] font-medium text-ink-soft">
+        {stage.conference} · {stage.name}
       </p>
-      <h1 className="text-[32px] font-bold leading-tight tracking-tight">{talk.title}</h1>
-      <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-ink-soft">
+      <h1 className="text-[28px] font-bold leading-tight tracking-tight sm:text-[32px]">{talk.title}</h1>
+      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[15px] text-ink-soft">
         <StatusTag status={detail.status} liveLabel="On stage" />
         {when && <span>{when}</span>}
         <span className="capitalize">{talk.kind}</span>
-        {detail.session_id && (
-          <Link href={`/video/${detail.session_id}${detail.t0 === null ? "" : `?t=${Math.floor(detail.t0)}`}`} className="font-medium text-accent hover:underline">
-            {detail.t0 === null ? "Watch the video" : `Watch from ${formatT(detail.t0)}`}
-          </Link>
-        )}
       </p>
+      {detail.session_id && (
+        <Link
+          href={`/video/${detail.session_id}${detail.t0 === null ? "" : `?t=${Math.floor(detail.t0)}`}`}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent-fill px-4 py-2 text-[14px] font-semibold text-on-accent hover:opacity-90"
+        >
+          <span aria-hidden>▶</span>
+          Watch Session
+        </Link>
+      )}
       {talk.speakers.length > 0 && (
         <ul className="mt-6 flex flex-wrap gap-x-8 gap-y-4">
           {talk.speakers.map((speaker) => (
@@ -86,7 +86,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
       {talk.description && <p className="mt-6 max-w-[72ch] text-ink-soft">{talk.description}</p>}
       {tab !== "gallery" && <FrameStrip frames={frames} title={talk.title} galleryHref={`/sessions/${talk.id}?tab=gallery`} />}
 
-      <div className="mt-10">
+      <div className="mt-6 sm:mt-10">
         <Tabs
           label="Session"
           items={[
@@ -112,7 +112,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
           ))}
         {tab === "summary" &&
           (summary ? (
-            <section aria-label="Summary" className="rounded-xl border border-line bg-surface p-6 sm:p-8">
+            <section aria-label="Summary" className="sm:rounded-xl sm:border sm:border-line sm:bg-surface sm:p-8">
               <Summary content={summary.summary.content} />
             </section>
           ) : (
