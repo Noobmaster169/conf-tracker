@@ -1,16 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Frame } from "@/lib/api-client";
-import { formatT } from "@/lib/format";
 import { frameDownloadUrl, frameFileName } from "@/lib/frames";
 
 /**
- * One frame large, over the page: its time (opening the video there), Download, and on a phone Share (the share sheet,
+ * One frame large, over the page, with Download and, on a phone, Share (the share sheet,
  * with the image attached: Save Image, or straight to the X app). Arrows, a swipe or the keyboard move through the list;
- * Esc or a click outside closes it.
+ * the × in its corner, Esc or a click outside closes it.
  */
 export function FrameViewer({ frames, title, index, onIndex, onClose }: { frames: Frame[]; title: string; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -56,7 +54,7 @@ export function FrameViewer({ frames, title, index, onIndex, onClose }: { frames
       ref={dialog}
       onClose={onClose}
       onClick={(e) => e.target === dialog.current && dialog.current?.close()}
-      aria-label={`Picture from ${title} at ${formatT(frame.t)}`}
+      aria-label={`Picture from ${title}`}
       className="m-auto w-[min(100vw-2rem,1100px)] max-w-none rounded-xl bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/70"
     >
       <div
@@ -70,7 +68,15 @@ export function FrameViewer({ frames, title, index, onIndex, onClose }: { frames
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- served by R2 as it is; next/image would proxy it through Vercel */}
-        <img src={frame.url} alt={`The stage at ${formatT(frame.t)}`} width={frame.width} height={frame.height} className="mx-auto max-h-[75vh] w-auto" />
+        <img src={frame.url} alt={`The stage during ${title}`} width={frame.width} height={frame.height} className="mx-auto max-h-[75vh] w-auto" />
+        <button
+          type="button"
+          onClick={() => dialog.current?.close()}
+          aria-label="Close"
+          className="absolute right-2 top-2 z-10 flex size-9 items-center justify-center rounded-full bg-black/60 text-[20px] leading-none text-white hover:bg-black/80"
+        >
+          ×
+        </button>
         {frames.length > 1 && (
           <>
             <button type="button" onClick={() => step(-1)} aria-label="Previous picture" className="absolute left-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-white hover:bg-black/70 sm:block">
@@ -82,10 +88,7 @@ export function FrameViewer({ frames, title, index, onIndex, onClose }: { frames
           </>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <Link href={`/video/${frame.session_id}?t=${Math.floor(frame.t)}`} className="text-[14px] tabular-nums text-ink-soft hover:text-accent hover:underline">
-          {formatT(frame.t)}
-        </Link>
+      <div className="flex items-center gap-3 px-4 py-3">
         {frames.length > 1 && (
           <span className="text-[13px] tabular-nums text-ink-faint">
             {index + 1} / {frames.length}
@@ -100,9 +103,6 @@ export function FrameViewer({ frames, title, index, onIndex, onClose }: { frames
           <a href={download} download={name} className={canShare ? "btn btn-quiet" : "btn"}>
             Download
           </a>
-          <button type="button" onClick={() => dialog.current?.close()} className="btn btn-quiet">
-            Close
-          </button>
         </span>
       </div>
     </dialog>
