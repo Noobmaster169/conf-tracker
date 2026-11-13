@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Avatar } from "@/components/ui/avatar";
+import { BackButton } from "@/components/ui/back-button";
 import { Empty, Page, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
 import { TalkRow } from "@/components/ui/talk-row";
@@ -41,11 +41,7 @@ export default async function SpeakerPage({ params, searchParams }: PageProps<"/
 
   return (
     <Page narrow>
-      <p className="mb-6 text-ink-soft">
-        <Link href="/speakers" className="hover:text-accent hover:underline">
-          Speakers
-        </Link>
-      </p>
+      <BackButton fallback="/speakers" />
       <header className="flex items-center gap-5">
         <Avatar name={person.name} photoUrl={person.photo_url} size="xl" />
         <div className="min-w-0">

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { Theme } from "@/lib/theme";
 
 import { ThemeToggle } from "./theme-toggle";
+import { useTrackPages } from "./ui/back-button";
 
 const LINKS = [
   { href: "/", label: "Videos", match: /^\/($|video)/ },
@@ -44,6 +45,7 @@ function BurgerIcon({ open }: { open: boolean }) {
  */
 export function Nav({ theme }: { theme: Theme }) {
   const path = usePathname();
+  useTrackPages();
   // The page the panel was opened on: moving to another page closes it without an effect.
   const [openOn, setOpenOn] = useState<string | null>(null);
   const open = openOn === path;

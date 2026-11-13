@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Avatar } from "@/components/ui/avatar";
+import { BackButton } from "@/components/ui/back-button";
 import { Empty, Page, StatusTag, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
 import { FrameStrip, Gallery } from "@/components/ui/gallery";
@@ -50,6 +51,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
   return (
     <Page narrow>
+      <BackButton fallback={stage.day ? `/sessions?day=${encodeURIComponent(stage.day)}&stage=${encodeURIComponent(stage.id)}` : "/sessions"} />
       <p className="mb-2 text-[14px] font-medium text-ink-soft">
         {stage.conference} · {stage.name}
       </p>
