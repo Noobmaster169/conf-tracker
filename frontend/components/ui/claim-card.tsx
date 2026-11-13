@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import type { FeedItem } from "@/lib/api/views";
-import { formatT, titleAndOrg } from "@/lib/format";
+import { formatT, titleAndOrg, watchUrl } from "@/lib/format";
 import { isMajor } from "@/lib/kinds";
 
 import { Avatar } from "./avatar";
@@ -43,7 +43,6 @@ export interface ClaimCardProps {
  * card because it is the thing being read; a claim rated as news carries a blue edge.
  */
 export function ClaimCard({ item, hide = {}, aside }: ClaimCardProps) {
-  const at = item.t0 === null ? "" : `?t=${Math.floor(item.t0)}`;
   return (
     <article className={`rounded-xl border bg-surface p-4 sm:p-5 ${isMajor(item.importance) ? "border-line border-l-[3px] border-l-accent" : "border-line"}`}>
       {(!hide.who || aside) && (
@@ -61,10 +60,10 @@ export function ClaimCard({ item, hide = {}, aside }: ClaimCardProps) {
             {item.talk.title}
           </Link>
         )}
-        {!hide.video && (
-          <Link href={`/video/${item.video.session_id}${at}`} className="hover:text-accent hover:underline">
+        {!hide.video && item.video.video_id && (
+          <a href={watchUrl(item.video.video_id, item.t0)} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">
             {item.t0 === null ? "Watch" : `Watch at ${formatT(item.t0)}`}
-          </Link>
+          </a>
         )}
       </footer>
     </article>

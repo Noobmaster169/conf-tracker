@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Feed, Frame, PersonCard, PersonDetail, TalkCard, TalkDetail, VideoCard } from "./views";
 import { BackendError, get, PAGE_CACHE_S, parseAs, refusalMessage, request } from "./transport";
 
-export { FEED_CACHE_S } from "./transport";
+export { FEED_CACHE_S, SETTLED_CACHE_S } from "./transport";
 
 /** What each page opens on. Read-only. The public ones are shared between visitors for a few seconds (transport.ts). */
 

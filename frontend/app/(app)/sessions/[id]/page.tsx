@@ -9,7 +9,7 @@ import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk, getTalkFrames } from "@/lib/api-client";
-import { formatDay, plannedTime, plural, readableDescription, titleAndOrg } from "@/lib/format";
+import { formatDay, plannedTime, plural, readableDescription, titleAndOrg, watchUrl } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -61,14 +61,16 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
         {when && <span>{when}</span>}
         <span className="capitalize">{talk.kind}</span>
       </p>
-      {detail.session_id && (
-        <Link
-          href={`/video/${detail.session_id}${detail.t0 === null ? "" : `?t=${Math.floor(detail.t0)}`}`}
+      {detail.video_id && (
+        <a
+          href={watchUrl(detail.video_id, detail.t0)}
+          target="_blank"
+          rel="noreferrer"
           className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent-fill px-4 py-2 text-[14px] font-semibold text-on-accent hover:opacity-90"
         >
           <span aria-hidden>▶</span>
           Watch Session
-        </Link>
+        </a>
       )}
       {talk.speakers.length > 0 && (
         <ul className="mt-6 flex flex-wrap gap-x-8 gap-y-4">

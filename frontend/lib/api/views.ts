@@ -24,6 +24,9 @@ export const VideoCard = z.object({
   gaps: z.array(Gap).default([]),
   // How far behind the stream a running video's last stored health said it was; an older api omits it.
   behind_s: z.number().nullable().default(null),
+  // An older api omits both: no last talk known, and no picture (the card falls back to YouTube's still).
+  last_talk: z.object({ id: z.number(), title: z.string() }).nullable().default(null),
+  frame: z.object({ url: z.string(), thumb_url: z.string(), t: z.number(), created_at: z.string() }).nullable().default(null),
 });
 export type VideoCard = z.infer<typeof VideoCard>;
 

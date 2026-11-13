@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createStageAction, resumeVideoAction, setNowAction, setVideoStageAction, stopVideoAction, trackVideoAction } from "@/app/actions/admin";
 import { AdminTabs, Field, Notice, Panel, SubmitButton } from "@/components/admin/parts";
 import { LiveBadge, Page, PageHeader } from "@/components/ui/bits";
-import { isLive } from "@/components/ui/video-card";
+import { isLiveVideo as isLive } from "@/lib/monitor";
 import { listStages, listVideos, type StageWithTalks, type VideoCard } from "@/lib/api-client";
 import { formatDay, plural } from "@/lib/format";
 import { canResume, sessionState } from "@/lib/session-state";
@@ -34,9 +34,13 @@ function VideoRow({ video, stages }: { video: VideoCard; stages: StageWithTalks[
   return (
     <li className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
-        <Link href={`/video/${session.id}`} className="font-semibold hover:text-accent">
-          {session.title ?? session.source_url ?? session.id}
-        </Link>
+        {session.source_url ? (
+          <a href={session.source_url} target="_blank" rel="noreferrer" className="font-semibold hover:text-accent">
+            {session.title ?? session.source_url}
+          </a>
+        ) : (
+          <span className="font-semibold">{session.title ?? session.id}</span>
+        )}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[13px] text-ink-soft">
           {state.label === "Live" ? <LiveBadge /> : <span className={state.label === "Needs attention" || state.label === "Recovering" ? "font-medium text-live" : undefined}>{state.label}</span>}
           {state.detail && <span>{state.detail}</span>}

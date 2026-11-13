@@ -22,6 +22,12 @@ describe("cleanFeedQuery", () => {
     expect(clean("session=not-a-uuid")).toBeNull();
   });
 
+  it("passes the Monitor's day and stage, and refuses them malformed", () => {
+    expect(clean("stage=11111111-1111-1111-1111-111111111111&day=2026-11-12")).toBe("stage=11111111-1111-1111-1111-111111111111&day=2026-11-12");
+    expect(clean("day=12-11-2026")).toBeNull();
+    expect(clean("stage=main")).toBeNull();
+  });
+
   it("passes a session uuid", () => {
     expect(clean("session=0b6f2c1e-3c3a-4f7e-9a51-2a9f0e5f6d11")).toBe("session=0b6f2c1e-3c3a-4f7e-9a51-2a9f0e5f6d11");
   });

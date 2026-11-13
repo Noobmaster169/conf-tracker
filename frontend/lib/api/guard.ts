@@ -25,6 +25,8 @@ const FeedParams = z
     person: int,
     talk: int,
     session: z.string().regex(UUID),
+    stage: z.string().regex(UUID),
+    day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     limit: z.string().regex(/^\d{1,3}$/),
   })
   .partial();

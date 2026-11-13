@@ -1,25 +1,12 @@
 import { z } from "zod";
 
 import { Span } from "./conference";
-import { pageByT0 } from "./paging";
-import { Segment, Session, Snapshot } from "./schemas";
-import { BackendError, get, parseAs, refusalMessage, request } from "./transport";
+import { Session } from "./schemas";
+import { BackendError, parseAs, refusalMessage, request } from "./transport";
 
 export * from "./schemas";
 
-/** One video (the backend calls it a session): its page's first render, its transcript, and the admin's controls. */
-
-export async function getSnapshot(id: string): Promise<Snapshot | null> {
-  const response = await request(`/sessions/${encodeURIComponent(id)}`);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new BackendError(await refusalMessage(response), response.status);
-  return parseAs(Snapshot, response, "GET /sessions/:id");
-}
-
-/** Every segment of a video, oldest first; the snapshot has only the newest. */
-export function getTranscript(id: string): Promise<Segment[]> {
-  return pageByT0((from) => get(z.array(Segment), `/sessions/${encodeURIComponent(id)}/transcript?from=${from}`));
-}
+/** One video (the backend calls it a session): the admin's controls. */
 
 async function post<T>(schema: z.ZodType<T>, path: string, body?: unknown, timeoutMs = 30_000): Promise<T> {
   const response = await request(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body), timeoutMs });
@@ -47,10 +34,4 @@ export function setSessionStage(id: string, stageId: string | null): Promise<Ses
 /** The admin's correction: this talk (or a break, with null) is on stage from the newest transcript line. */
 export function setNowOnStage(id: string, talkId: number | null): Promise<Span> {
   return post(Span, `/sessions/${encodeURIComponent(id)}/now`, { talk_id: talkId });
-}
-
-/** The SSE stream, unread: the route handler hands the body to the browser. */
-export function streamEvents(id: string, after: number | null, signal: AbortSignal): Promise<Response> {
-  const query = after === null ? "" : `?after=${after}`;
-  return request(`/sessions/${encodeURIComponent(id)}/events${query}`, { signal, timeoutMs: 24 * 60 * 60 * 1000 });
 }

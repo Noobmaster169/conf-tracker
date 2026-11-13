@@ -25,6 +25,11 @@ export const PUBLIC_TAG = "public";
 /** How long a public page's data is shared between visitors, and the Monitor's poll. */
 export const PAGE_CACHE_S = 15;
 export const FEED_CACHE_S = 5;
+/**
+ * What no longer changes by itself: a day whose videos have all ended, and an older page of claims. An admin's correction
+ * clears it at once (PUBLIC_TAG), so the long window costs nothing in freshness.
+ */
+export const SETTLED_CACHE_S = 600;
 
 /**
  * A read every visitor sees the same, shared through Vercel's data cache for `seconds`: however many people open a

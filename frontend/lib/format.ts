@@ -71,3 +71,8 @@ export function readableDescription(text: string | null): string | null {
   const rest = label && isLabel ? trimmed.slice(label[0].length) : trimmed;
   return (rest.match(/\p{L}/gu)?.length ?? 0) >= 12 ? rest : null;
 }
+
+/** The video on YouTube, at `t` seconds when given: where "Watch" goes now that the app has no video page of its own. */
+export function watchUrl(videoId: string, t?: number | null): string {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}${t === null || t === undefined ? "" : `&t=${Math.max(0, Math.floor(t))}s`}`;
+}

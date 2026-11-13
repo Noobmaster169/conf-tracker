@@ -10,8 +10,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { useTrackPages } from "./ui/back-button";
 
 const LINKS = [
-  { href: "/", label: "Videos", match: /^\/($|video)/ },
-  { href: "/monitor", label: "Monitor", match: /^\/monitor/ },
+  { href: "/", label: "Monitor", match: /^\/($|monitor)/ },
   { href: "/sessions", label: "Sessions", match: /^\/sessions/ },
   { href: "/speakers", label: "Speakers", match: /^\/speakers/ },
 ] as const;
@@ -40,7 +39,7 @@ function BurgerIcon({ open }: { open: boolean }) {
 }
 
 /**
- * The four places a reader goes, and the admin area set apart at the far end. On a phone they fold behind a menu
+ * The three places a reader goes, and the admin area set apart at the far end. On a phone they fold behind a menu
  * button into a panel that slides in from the right; it closes on a choice, on Escape, or on a tap outside it.
  */
 export function Nav({ theme }: { theme: Theme }) {

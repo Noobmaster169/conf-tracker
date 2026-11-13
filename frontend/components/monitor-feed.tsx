@@ -13,16 +13,16 @@ const POLL_MS = 5000;
 
 type Filter = { kind: ClaimKind | null; major: boolean };
 
-function query(filter: Filter, extra: Record<string, number>): string {
-  const params = new URLSearchParams();
+function query(scope: Record<string, string>, filter: Filter, extra: Record<string, number>): string {
+  const params = new URLSearchParams(scope);
   if (filter.kind) params.set("kind", filter.kind);
   if (filter.major) params.set("min_importance", "4");
   for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
   return params.toString();
 }
 
-async function load(filter: Filter, extra: Record<string, number>): Promise<Feed> {
-  const response = await fetch(`/api/feed?${query(filter, extra)}`, { cache: "no-store" });
+async function load(scope: Record<string, string>, filter: Filter, extra: Record<string, number>): Promise<Feed> {
+  const response = await fetch(`/api/feed?${query(scope, filter, extra)}`, { cache: "no-store" });
   if (!response.ok) throw new Error(`The feed answered ${response.status}`);
   return Feed.parse(await response.json());
 }
@@ -35,8 +35,11 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-/** The newest claims from every stage, newest on top, checked for more every few seconds. */
-export function MonitorFeed({ initial }: { initial: Feed }) {
+/**
+ * The claims of one day, of every stage or of one, newest on top. While the day has a live stage it checks for more every
+ * few seconds; a day that has ended asks nothing more. The page keys it by its scope, so a new day or stage starts it afresh.
+ */
+export function MonitorFeed({ initial, scope, live }: { initial: Feed; scope: Record<string, string>; live: boolean }) {
   const [filter, setFilter] = useState<Filter>({ kind: null, major: false });
   const [items, setItems] = useState<FeedItem[]>(initial.items);
   const [older, setOlder] = useState<number | null>(initial.next_before);
@@ -51,7 +54,7 @@ export function MonitorFeed({ initial }: { initial: Feed }) {
       return;
     }
     let stale = false;
-    load(filter, {})
+    load(scope, filter, {})
       .then((feed) => {
         if (stale) return;
         setItems(feed.items);
@@ -62,12 +65,15 @@ export function MonitorFeed({ initial }: { initial: Feed }) {
     return () => {
       stale = true;
     };
+    // The scope is fixed for the component's life (the page keys it), so only the filter moves this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const newest = items[0]?.id ?? 0;
   useEffect(() => {
+    if (!live) return;
     const timer = setInterval(() => {
-      load(filter, { after: newest })
+      load(scope, filter, { after: newest })
         .then((feed) => {
           setError(null);
           if (feed.items.length > 0) setItems((current) => [...feed.items.filter((item) => !current.some((c) => c.id === item.id)), ...current]);
@@ -75,13 +81,14 @@ export function MonitorFeed({ initial }: { initial: Feed }) {
         .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [filter, newest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, newest, live]);
 
   const more = async () => {
     if (older === null) return;
     setBusy(true);
     try {
-      const feed = await load(filter, { before: older });
+      const feed = await load(scope, filter, { before: older });
       setItems((current) => [...current, ...feed.items]);
       setOlder(feed.next_before);
     } catch (e) {
@@ -109,7 +116,7 @@ export function MonitorFeed({ initial }: { initial: Feed }) {
       </div>
       {error && <p className="mb-4 rounded-lg bg-live-soft px-3 py-2 text-sm text-live">Could not refresh: {error}. Trying again.</p>}
       {items.length === 0 ? (
-        <Empty>Nothing has been said yet that fits. Claims appear here within a minute of being spoken on a tracked stage.</Empty>
+        <Empty>{live ? "Nothing has been said yet that fits. Claims appear here within a minute of being spoken on stage." : "No claims that fit."}</Empty>
       ) : (
         <ol className="space-y-3">
           {items.map((item) => (
