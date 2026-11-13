@@ -30,3 +30,13 @@ test("planned times, titles and initials are built from whatever is known", () =
   expect(titleAndOrg({ title: null, org: null })).toBeNull();
   expect([initials("Anatoly Yakovenko"), initials("Meow"), initials("  ")]).toEqual(["AY", "M", "?"]);
 });
+
+test("readableDescription drops the schedule's format label and what is not a sentence", async () => {
+  const { readableDescription } = await import("./format");
+  expect(readableDescription("Open/Close.")).toBeNull();
+  expect(readableDescription("Product Keynote. 👀")).toBeNull();
+  expect(readableDescription("")).toBeNull();
+  expect(readableDescription(null)).toBeNull();
+  expect(readableDescription("Product Keynote. A major announcement from the Temporal team.")).toBe("A major announcement from the Temporal team.");
+  expect(readableDescription("Tokenisation is easy. Utilization is hard. Kash Dhana discusses it.")).toBe("Tokenisation is easy. Utilization is hard. Kash Dhana discusses it.");
+});

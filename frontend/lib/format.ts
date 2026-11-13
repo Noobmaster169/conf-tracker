@@ -56,3 +56,18 @@ export function nameHue(name: string): number {
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/**
+ * A session's description as worth reading, or null. The event's schedule opens many with the session's format
+ * ("Product Keynote.", "Remarks.", "Open/Close."), which the page already says; that label goes, and what is left
+ * shows only when it is a sentence, not an emoji or nothing.
+ */
+export function readableDescription(text: string | null): string | null {
+  const trimmed = text?.trim() ?? "";
+  const label = /^([^.!?]+)\.\s*/.exec(trimmed);
+  const words = label?.[1].trim().split(/\s+/) ?? [];
+  // A label is a few capitalised words ("Product Keynote"); a sentence of three ("Tokenisation is easy") is not.
+  const isLabel = words.length > 0 && words.length <= 3 && words.every((w) => /^\p{Lu}/u.test(w));
+  const rest = label && isLabel ? trimmed.slice(label[0].length) : trimmed;
+  return (rest.match(/\p{L}/gu)?.length ?? 0) >= 12 ? rest : null;
+}

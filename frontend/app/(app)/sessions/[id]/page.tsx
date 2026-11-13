@@ -8,7 +8,7 @@ import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk, getTalkFrames } from "@/lib/api-client";
-import { formatDay, plannedTime, plural, titleAndOrg } from "@/lib/format";
+import { formatDay, plannedTime, plural, readableDescription, titleAndOrg } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +83,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
           ))}
         </ul>
       )}
-      {talk.description && <p className="mt-6 max-w-[72ch] text-ink-soft">{talk.description}</p>}
+      {readableDescription(talk.description) && <p className="mt-6 max-w-[72ch] text-ink-soft">{readableDescription(talk.description)}</p>}
       {tab !== "gallery" && <FrameStrip frames={frames} title={talk.title} galleryHref={`/sessions/${talk.id}?tab=gallery`} />}
 
       <div className="mt-6 sm:mt-10">
