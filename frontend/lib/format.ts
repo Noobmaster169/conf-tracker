@@ -92,3 +92,22 @@ export function timeAgo(iso: string, now: number = Date.now()): string | null {
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   return `${Math.floor(s / 86400)} d ago`;
 }
+
+/** Who a speaker is, on the line under their name: "Co-Founder, Credit Coop", or "Moderator · Reporter, Blockworks". */
+export function speakerLine(person: { title: string | null; org: string | null; role: "speaker" | "moderator" | "host" }): string | null {
+  const who = titleAndOrg(person);
+  const role = person.role === "moderator" ? "Moderator" : person.role === "host" ? "Host" : null;
+  return [role, who].filter(Boolean).join(" · ") || null;
+}
+
+/** How long a session is planned to run, from its "HH:MM" start and end: "10 min", "1 h 30 min", or nothing. */
+export function plannedLength(startsAt: string | null, endsAt: string | null): string | null {
+  const minutes = (t: string | null) => {
+    const m = t ? /^(\d{1,2}):(\d{2})$/.exec(t) : null;
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const start = minutes(startsAt);
+  const end = minutes(endsAt);
+  if (start === null || end === null || end <= start) return null;
+  return formatDuration((end - start) * 60);
+}

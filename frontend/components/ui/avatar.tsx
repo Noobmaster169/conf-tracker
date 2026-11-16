@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { initials, nameHue } from "@/lib/format";
 import { photoSrc } from "@/lib/photo";
 
-const SIZES = { sm: "size-8 text-xs", md: "size-10 text-sm", lg: "size-14 text-lg", xl: "size-24 text-3xl" } as const;
+const SIZES = { xs: "size-6 text-[10px]", sm: "size-8 text-xs", md: "size-10 text-sm", lg: "size-14 text-lg", xl: "size-24 text-3xl" } as const;
 
 /** A person's photo, or their initials on a colour that is always theirs. A voice nobody has named yet gets a plain mark. */
 export function Avatar({ name, photoUrl, size = "md" }: { name: string | null; photoUrl?: string | null; size?: keyof typeof SIZES }) {

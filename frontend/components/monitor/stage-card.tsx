@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { LiveBadge } from "@/components/ui/bits";
 import { TimeAgo } from "@/components/ui/time-ago";
-import { thumbnailUrl, watchUrl } from "@/lib/format";
+import { speakerLine, thumbnailUrl, watchUrl } from "@/lib/format";
 import type { Lineup, LineupTalk, StageGroup } from "@/lib/monitor";
 
 const label = "text-xs font-semibold uppercase tracking-wide";
@@ -18,7 +18,7 @@ function Speakers({ talk, size }: { talk: LineupTalk; size: "sm" | "md" }) {
           <Avatar name={s.name} photoUrl={s.photo_url} size="md" />
           <span className="min-w-0">
             <span className="block truncate text-[15px] font-medium">{s.name}</span>
-            {(s.org || s.role !== "speaker") && <span className="block truncate text-[13px] text-ink-soft">{s.role === "speaker" ? s.org : s.role === "moderator" ? "Moderator" : "Host"}</span>}
+            {speakerLine(s) && <span className="block truncate text-[13px] text-ink-soft">{speakerLine(s)}</span>}
           </span>
         </li>
       ))}

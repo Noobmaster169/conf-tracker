@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatDay, formatDuration, formatT, initials, plannedTime, timeAgo, titleAndOrg, xHandle } from "./format";
+import { formatDay, formatDuration, formatT, initials, plannedLength, plannedTime, speakerLine, timeAgo, titleAndOrg, xHandle } from "./format";
 
 test.each([
   [0, "00:00"],
@@ -56,4 +56,18 @@ test("timeAgo says how long ago, and nothing past a week", () => {
   expect(timeAgo("2026-11-14T12:00:00Z", now)).toBe("2 d ago");
   expect(timeAgo("2026-11-09T12:00:00Z", now)).toBeNull();
   expect(timeAgo("2026-11-16T12:00:05Z", now)).toBe("0s ago");
+});
+
+test("speakerLine gives title and company, with the role in front for a moderator or host", () => {
+  expect(speakerLine({ title: "Co-Founder", org: "Credit Coop", role: "speaker" })).toBe("Co-Founder, Credit Coop");
+  expect(speakerLine({ title: null, org: "Blockworks", role: "moderator" })).toBe("Moderator · Blockworks");
+  expect(speakerLine({ title: null, org: null, role: "host" })).toBe("Host");
+  expect(speakerLine({ title: null, org: null, role: "speaker" })).toBeNull();
+});
+
+test("plannedLength is how long the schedule gives a session", () => {
+  expect(plannedLength("13:00", "13:10")).toBe("10 min");
+  expect(plannedLength("9:30", "11:00")).toBe("1 h 30 min");
+  expect(plannedLength("13:00", null)).toBeNull();
+  expect(plannedLength("13:00", "12:00")).toBeNull();
 });

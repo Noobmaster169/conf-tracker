@@ -1,19 +1,22 @@
 import Link from "next/link";
 
 import type { TalkCard } from "@/lib/api/views";
-import { formatDay, plannedTime } from "@/lib/format";
+import { formatDay, plannedLength, plannedTime, speakerLine } from "@/lib/format";
 
+import { Avatar } from "./avatar";
 import { StatusTag } from "./bits";
 
 /**
- * One line of a schedule: when, what, who, and whether it is past, live or still to come. The whole row opens the
+ * One line of a schedule: when and for how long, what, who, and whether it is past, live or still to come. The whole row opens the
  * session; "View details" says so in words, so nobody has to guess the row is a link. A list not already grouped by
- * stage asks for the stage to be named too.
+ * stage asks for the stage to be named too. The schedule shows each speaker's picture, title and company; a speaker's own
+ * page, where every row has the same face, keeps to the names.
  */
 export function TalkRow({ card, showStage = false }: { card: TalkCard; showStage?: boolean }) {
   const { talk, stage } = card;
   const names = talk.speakers.map((s) => s.name).join(", ");
   const time = plannedTime(talk.starts_at, talk.ends_at);
+  const length = plannedLength(talk.starts_at, talk.ends_at);
   // A list over several days (a speaker's sessions) says which day too; the schedule has picked the day already.
   const date = showStage ? formatDay(stage.day) : null;
   return (
@@ -29,11 +32,34 @@ export function TalkRow({ card, showStage = false }: { card: TalkCard; showStage
           </span>
         )}
         {time ?? ""}
+        {length && (
+          <span className="sm:mt-0.5 sm:block">
+            <span className="sm:hidden"> · </span>
+            {length}
+          </span>
+        )}
       </span>
       <span className="min-w-0">
         {showStage && <span className="mb-0.5 block truncate text-[13px] font-medium text-accent">{`${stage.conference}, ${stage.name}`}</span>}
         <span className="block font-semibold leading-snug group-hover:text-accent">{talk.title}</span>
-        {names && <span className="mt-0.5 block truncate text-[13px] text-ink-soft">{names}</span>}
+        {showStage
+          ? names && <span className="mt-0.5 block truncate text-[13px] text-ink-soft">{names}</span>
+          : talk.speakers.length > 0 && (
+              <span className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
+                {talk.speakers.map((s) => {
+                  const line = speakerLine(s);
+                  return (
+                    <span key={`${s.id}-${s.role}`} className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={s.name} photoUrl={s.photo_url} size="sm" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{s.name}</span>
+                        {line && <span className="block text-[13px] leading-snug text-ink-soft">{line}</span>}
+                      </span>
+                    </span>
+                  );
+                })}
+              </span>
+            )}
         {card.headline && <span className="mt-2 block max-w-[75ch] text-ink-soft">{card.headline}</span>}
       </span>
       <span className="mt-3 flex items-center justify-between gap-3 sm:mt-0 sm:flex-col sm:items-end sm:justify-between">
