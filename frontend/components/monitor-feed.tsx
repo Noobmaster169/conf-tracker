@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ClaimCard } from "@/components/ui/claim-card";
+import { chipClass } from "@/components/ui/claim-filters";
 import { Empty } from "@/components/ui/bits";
 import { LocalTime } from "@/components/ui/local-time";
 import type { ClaimKind } from "@/lib/api/schemas";
@@ -29,7 +30,7 @@ async function load(scope: Record<string, string>, filter: Filter, extra: Record
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-full border px-3 py-1 text-sm font-medium ${active ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface text-ink-soft hover:text-ink"}`}>
+    <button type="button" aria-pressed={active} onClick={onClick} className={chipClass(active)}>
       {children}
     </button>
   );

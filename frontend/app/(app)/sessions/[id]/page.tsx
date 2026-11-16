@@ -5,11 +5,13 @@ import { Avatar } from "@/components/ui/avatar";
 import { BackButton } from "@/components/ui/back-button";
 import { Empty, Page, StatusTag, Tabs } from "@/components/ui/bits";
 import { ClaimCard } from "@/components/ui/claim-card";
+import { type ClaimFilter, ClaimFilterLinks, parseClaimFilter } from "@/components/ui/claim-filters";
 import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
 import { getTalk, getTalkFrames, getTalkTranscript } from "@/lib/api-client";
 import { formatDay, formatT, plannedTime, plural, readableDescription, titleAndOrg, watchUrl } from "@/lib/format";
+import { isMajor } from "@/lib/kinds";
 import { transcriptTurns } from "@/lib/transcript";
 
 export const dynamic = "force-dynamic";
@@ -51,12 +53,21 @@ const parseTab = (value: unknown): Tab => (TABS.includes(value as Tab) ? (value 
 
 export default async function SessionPage({ params, searchParams }: PageProps<"/sessions/[id]">) {
   const { id } = await params;
-  const tab = parseTab((await searchParams).tab);
+  const query = await searchParams;
+  const tab = parseTab(query.tab);
+  const filter = parseClaimFilter(query);
   const [detail, frames] = await Promise.all([getTalk(id), getTalkFrames(id)]);
   if (!detail) notFound();
   const { talk, stage, summary, post, claims } = detail;
   const heard = tab === "transcript" && detail.session_id !== null && detail.t0 !== null ? await getTalkTranscript(detail.session_id, detail.t0, detail.t1) : null;
   const turns = heard ? transcriptTurns(heard.segments, heard.speakers, heard.people) : [];
+  const shownClaims = claims.filter((c) => (filter.kind === null || c.kind === filter.kind) && (!filter.major || isMajor(c.importance)));
+  const claimsHref = ({ kind, major }: ClaimFilter): string => {
+    const params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (major) params.set("major", "1");
+    return params.size ? `/sessions/${talk.id}?${params}` : `/sessions/${talk.id}`;
+  };
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
   return (
     <Page narrow>
@@ -115,13 +126,18 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
             <Empty>{NO_CLAIMS[detail.status]}</Empty>
           ) : (
             <section aria-label={`${plural(claims.length, "claim")} from this session`}>
-              <ol className="space-y-3">
-                {claims.map((item) => (
-                  <li key={item.id}>
-                    <ClaimCard item={item} hide={{ talk: true }} />
-                  </li>
-                ))}
-              </ol>
+              <ClaimFilterLinks filter={filter} href={claimsHref} />
+              {shownClaims.length === 0 ? (
+                <Empty>No claims that fit.</Empty>
+              ) : (
+                <ol className="space-y-3">
+                  {shownClaims.map((item) => (
+                    <li key={item.id}>
+                      <ClaimCard item={item} hide={{ talk: true }} />
+                    </li>
+                  ))}
+                </ol>
+              )}
             </section>
           ))}
         {tab === "summary" &&
