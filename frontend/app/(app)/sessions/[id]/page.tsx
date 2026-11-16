@@ -57,12 +57,10 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
   const { talk, stage, summary, post, claims } = detail;
   const heard = tab === "transcript" && detail.session_id !== null && detail.t0 !== null ? await getTalkTranscript(detail.session_id, detail.t0, detail.t1) : null;
   const turns = heard ? transcriptTurns(heard.segments, heard.speakers, heard.people) : [];
-  // The schedule this session is on: its day and stage.
-  const sessionsHref = stage.day ? `/sessions?day=${encodeURIComponent(stage.day)}&stage=${encodeURIComponent(stage.id)}` : "/sessions";
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
   return (
     <Page narrow>
-      <BackButton fallback={sessionsHref} />
+      <BackButton fallback={stage.day ? `/sessions?day=${encodeURIComponent(stage.day)}&stage=${encodeURIComponent(stage.id)}` : "/sessions"} />
       <p className="mb-2 text-[14px] font-medium text-ink-soft">
         {stage.conference} · {stage.name}
       </p>
@@ -72,25 +70,17 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
         {when && <span>{when}</span>}
         <span className="capitalize">{talk.kind}</span>
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {detail.video_id && (
-          <a
-            href={watchUrl(detail.video_id, detail.t0)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-fill px-4 py-2 text-[14px] font-semibold text-on-accent hover:opacity-90"
-          >
-            <span aria-hidden>▶</span>
-            Watch Session
-          </a>
-        )}
-        <Link href={sessionsHref} className="inline-flex items-center rounded-lg border border-line bg-surface px-4 py-2 text-[14px] font-semibold hover:border-ink-faint">
-          View all Sessions
-        </Link>
-        <Link href="/speakers" className="inline-flex items-center rounded-lg border border-line bg-surface px-4 py-2 text-[14px] font-semibold hover:border-ink-faint">
-          View all Speakers
-        </Link>
-      </div>
+      {detail.video_id && (
+        <a
+          href={watchUrl(detail.video_id, detail.t0)}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent-fill px-4 py-2 text-[14px] font-semibold text-on-accent hover:opacity-90"
+        >
+          <span aria-hidden>▶</span>
+          Watch Session
+        </a>
+      )}
       {talk.speakers.length > 0 && (
         <ul className="mt-6 flex flex-wrap gap-x-8 gap-y-4">
           {talk.speakers.map((speaker) => (
