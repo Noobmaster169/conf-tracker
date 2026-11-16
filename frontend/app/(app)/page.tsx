@@ -108,8 +108,8 @@ export default async function MonitorPage({ searchParams }: PageProps<"/">) {
       )}
 
       <section aria-label="Stages" className={`mb-10 grid gap-5 ${shown.length > 1 ? "lg:grid-cols-2" : ""}`}>
-        {shown.map((g) => (
-          <StageCard key={g.key} group={g} lineup={stageLineup(g, talks)} />
+        {shown.map((g, i) => (
+          <StageCard key={g.key} group={g} lineup={stageLineup(g, talks)} links={i === 0 ? { sessions: `/sessions?day=${encodeURIComponent(day.day)}` } : undefined} />
         ))}
       </section>
       <section aria-labelledby="claims-heading" className="min-w-0 max-w-[1000px]">
