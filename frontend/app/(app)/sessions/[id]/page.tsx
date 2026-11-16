@@ -8,8 +8,9 @@ import { ClaimCard } from "@/components/ui/claim-card";
 import { FrameStrip, Gallery } from "@/components/ui/gallery";
 import { PostCard } from "@/components/ui/post-card";
 import { Summary } from "@/components/ui/summary";
-import { getTalk, getTalkFrames } from "@/lib/api-client";
-import { formatDay, plannedTime, plural, readableDescription, titleAndOrg, watchUrl } from "@/lib/format";
+import { getTalk, getTalkFrames, getTalkTranscript } from "@/lib/api-client";
+import { formatDay, formatT, plannedTime, plural, readableDescription, titleAndOrg, watchUrl } from "@/lib/format";
+import { transcriptTurns } from "@/lib/transcript";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,13 @@ const NO_FRAMES = {
   ended: "No pictures were taken of this session.",
 } as const;
 
-const TABS = ["claims", "summary", "post", "gallery"] as const;
+const NO_TRANSCRIPT = {
+  upcoming: "This session has not been on stage yet. Its transcript appears here as it is spoken.",
+  live: "On stage now. The transcript appears here as it is spoken.",
+  ended: "No transcript was recorded for this session.",
+} as const;
+
+const TABS = ["claims", "summary", "post", "transcript", "gallery"] as const;
 type Tab = (typeof TABS)[number];
 const parseTab = (value: unknown): Tab => (TABS.includes(value as Tab) ? (value as Tab) : "claims");
 
@@ -48,6 +55,8 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
   const [detail, frames] = await Promise.all([getTalk(id), getTalkFrames(id)]);
   if (!detail) notFound();
   const { talk, stage, summary, post, claims } = detail;
+  const heard = tab === "transcript" && detail.session_id !== null && detail.t0 !== null ? await getTalkTranscript(detail.session_id, detail.t0, detail.t1) : null;
+  const turns = heard ? transcriptTurns(heard.segments, heard.speakers, heard.people) : [];
   const when = [formatDay(stage.day), plannedTime(talk.starts_at, talk.ends_at)].filter(Boolean).join(", ");
   return (
     <Page narrow>
@@ -97,6 +106,7 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
             { href: `/sessions/${talk.id}`, label: "Claims", count: claims.length, current: tab === "claims" },
             { href: `/sessions/${talk.id}?tab=summary`, label: "Summary", current: tab === "summary" },
             { href: `/sessions/${talk.id}?tab=post`, label: "Post", current: tab === "post" },
+            { href: `/sessions/${talk.id}?tab=transcript`, label: "Transcript", current: tab === "transcript" },
             { href: `/sessions/${talk.id}?tab=gallery`, label: "Gallery", count: frames.length, current: tab === "gallery" },
           ]}
         />
@@ -123,6 +133,30 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
             <Empty>{NO_SUMMARY[detail.status]}</Empty>
           ))}
         {tab === "post" && (post ? <PostCard text={post.text} /> : <Empty>{NO_POST[detail.status]}</Empty>)}
+        {tab === "transcript" &&
+          (turns.length > 0 ? (
+            <section aria-label="Transcript">
+              <ol className="space-y-5">
+                {turns.map((turn) => (
+                  <li key={turn.t0}>
+                    <p className="mb-1 flex items-baseline gap-3 text-[14px]">
+                      <span className="font-semibold">{turn.name ?? "Unnamed voice"}</span>
+                      {detail.video_id ? (
+                        <a href={watchUrl(detail.video_id, turn.t0)} target="_blank" rel="noreferrer" className="tabular-nums text-ink-faint hover:text-accent">
+                          {formatT(turn.t0)}
+                        </a>
+                      ) : (
+                        <span className="tabular-nums text-ink-faint">{formatT(turn.t0)}</span>
+                      )}
+                    </p>
+                    <p className="max-w-[72ch] leading-relaxed">{turn.text}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : (
+            <Empty>{detail.session_id && !heard ? "The transcript could not be loaded. Try again in a moment." : NO_TRANSCRIPT[detail.status]}</Empty>
+          ))}
         {tab === "gallery" && (frames.length > 0 ? <Gallery frames={frames} title={talk.title} /> : <Empty>{NO_FRAMES[detail.status]}</Empty>)}
       </div>
     </Page>

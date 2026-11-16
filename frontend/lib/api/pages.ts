@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import type { Person } from "./conference";
+import { pageByT0 } from "./paging";
+import { Segment, Snapshot, type Speaker } from "./schemas";
 import { Feed, Frame, PersonCard, PersonDetail, TalkCard, TalkDetail, VideoCard } from "./views";
 import { BackendError, get, PAGE_CACHE_S, parseAs, refusalMessage, request } from "./transport";
 
@@ -41,6 +44,27 @@ export function getPerson(id: string): Promise<PersonDetail | null> {
 
 export function getTalk(id: string): Promise<TalkDetail | null> {
   return /^\d+$/.test(id) ? orNull(TalkDetail, `/talks/${id}`) : Promise.resolve(null);
+}
+
+/**
+ * What a talk's video heard between `t0` and `t1` (null: still running), with the video's voices and people to name
+ * them. Null when it cannot be read, so a transcript that fails does not take the session page with it.
+ */
+export async function getTalkTranscript(
+  sessionId: string,
+  t0: number,
+  t1: number | null,
+): Promise<{ segments: Segment[]; speakers: Speaker[]; people: Person[] } | null> {
+  const base = `/sessions/${encodeURIComponent(sessionId)}`;
+  try {
+    const [segments, snapshot] = await Promise.all([
+      pageByT0((from) => get(z.array(Segment), `${base}/transcript?from=${Math.max(from, t0)}${t1 === null ? "" : `&to=${t1}`}`, PAGE_CACHE_S)),
+      get(Snapshot, base, PAGE_CACHE_S),
+    ]);
+    return { segments, speakers: snapshot.speakers, people: snapshot.people };
+  } catch {
+    return null;
+  }
 }
 
 /**
