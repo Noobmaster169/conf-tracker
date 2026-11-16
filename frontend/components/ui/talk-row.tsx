@@ -34,8 +34,9 @@ export function TalkRow({ card, showStage = false }: { card: TalkCard; showStage
         {time ?? ""}
         {length && (
           <span className="sm:mt-0.5 sm:block">
-            <span className="sm:hidden"> · </span>
+            <span className="sm:hidden"> (</span>
             {length}
+            <span className="sm:hidden">)</span>
           </span>
         )}
       </span>
