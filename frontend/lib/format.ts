@@ -82,3 +82,13 @@ export function readableDescription(text: string | null): string | null {
 export function watchUrl(videoId: string, t?: number | null): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}${t === null || t === undefined ? "" : `&t=${Math.max(0, Math.floor(t))}s`}`;
 }
+
+/** How long ago a moment was, as a card says it: "10s ago", "2 min ago", "3 h ago", "2 d ago". Nothing past a week. */
+export function timeAgo(iso: string, now: number = Date.now()): string | null {
+  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
+  if (Number.isNaN(s) || s >= 7 * 86400) return null;
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}

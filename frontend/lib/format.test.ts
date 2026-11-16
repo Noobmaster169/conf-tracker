@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatDay, formatDuration, formatT, initials, plannedTime, titleAndOrg, xHandle } from "./format";
+import { formatDay, formatDuration, formatT, initials, plannedTime, timeAgo, titleAndOrg, xHandle } from "./format";
 
 test.each([
   [0, "00:00"],
@@ -46,4 +46,14 @@ test("an X profile link reads as its handle; anything else is shown as given", (
   expect(xHandle("https://twitter.com/rajgokal/")).toBe("@rajgokal");
   expect(xHandle("https://www.x.com/Luke_Truitt?lang=en")).toBe("@Luke_Truitt");
   expect(xHandle("https://example.com/someone")).toBe("https://example.com/someone");
+});
+
+test("timeAgo says how long ago, and nothing past a week", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  expect(timeAgo("2026-11-16T11:59:50Z", now)).toBe("10s ago");
+  expect(timeAgo("2026-11-16T11:58:00Z", now)).toBe("2 min ago");
+  expect(timeAgo("2026-11-16T09:00:00Z", now)).toBe("3 h ago");
+  expect(timeAgo("2026-11-14T12:00:00Z", now)).toBe("2 d ago");
+  expect(timeAgo("2026-11-09T12:00:00Z", now)).toBeNull();
+  expect(timeAgo("2026-11-16T12:00:05Z", now)).toBe("0s ago");
 });

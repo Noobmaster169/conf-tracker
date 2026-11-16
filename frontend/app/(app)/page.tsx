@@ -4,9 +4,9 @@ import { MonitorFeed } from "@/components/monitor-feed";
 import { LiveRefresh } from "@/components/monitor/live-refresh";
 import { StageCard } from "@/components/monitor/stage-card";
 import { Empty, Page } from "@/components/ui/bits";
-import { FEED_CACHE_S, getFeed, listVideos, SETTLED_CACHE_S } from "@/lib/api-client";
+import { FEED_CACHE_S, getFeed, listTalks, listVideos, SETTLED_CACHE_S } from "@/lib/api-client";
 import { formatDay } from "@/lib/format";
-import { defaultDay, feedScope, monitorDays, monitorHref } from "@/lib/monitor";
+import { defaultDay, feedScope, monitorDays, monitorHref, stageLineup } from "@/lib/monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +34,8 @@ function Pill({ href, current, live = false, children }: { href: string; current
 }
 
 /**
- * The Monitor, and the app's front page: a day at a time, its stages on the left (what is on, and the newest picture of
- * each) and what was claimed on them on the right. A day that has ended is read from a long-lived cache and never polled;
+ * The Monitor, and the app's front page: a day at a time, a large card per stage on top (what is on now, what was on
+ * before and what is next, with the newest picture beside it) and what was claimed on them below. A day that has ended is read from a long-lived cache and never polled;
  * a live day refreshes its stages and polls its claims.
  */
 export default async function MonitorPage({ searchParams }: PageProps<"/">) {
@@ -53,7 +53,11 @@ export default async function MonitorPage({ searchParams }: PageProps<"/">) {
   const shown = picked ? [picked] : day.groups;
   const live = shown.some((g) => g.live);
   const scope = feedScope(day.day, picked);
-  const initial = await getFeed(new URLSearchParams(scope).toString(), live ? FEED_CACHE_S : SETTLED_CACHE_S);
+  // The schedule only adds what came before and what is next; a card without it still shows what the video knows.
+  const [initial, talks] = await Promise.all([
+    getFeed(new URLSearchParams(scope).toString(), live ? FEED_CACHE_S : SETTLED_CACHE_S),
+    listTalks().catch(() => []),
+  ]);
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
@@ -103,18 +107,17 @@ export default async function MonitorPage({ searchParams }: PageProps<"/">) {
         </nav>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-8">
-        <aside aria-label="Stages" className="lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
-          <div className={`grid gap-5 ${shown.length > 1 ? "grid-cols-2 lg:grid-cols-1" : ""}`}>
-            {shown.map((g) => (
-              <StageCard key={g.key} group={g} compact={shown.length > 1} />
-            ))}
-          </div>
-        </aside>
-        <section aria-label="Claims" className="min-w-0">
-          <MonitorFeed key={`${day.day}|${picked?.key ?? "all"}`} initial={initial} scope={scope} live={live} />
-        </section>
-      </div>
+      <section aria-label="Stages" className={`mb-10 grid gap-5 ${shown.length > 1 ? "lg:grid-cols-2" : ""}`}>
+        {shown.map((g) => (
+          <StageCard key={g.key} group={g} lineup={stageLineup(g, talks)} />
+        ))}
+      </section>
+      <section aria-labelledby="claims-heading" className="min-w-0 max-w-[1000px]">
+        <h2 id="claims-heading" className="mb-4 text-lg font-semibold">
+          What was said
+        </h2>
+        <MonitorFeed key={`${day.day}|${picked?.key ?? "all"}`} initial={initial} scope={scope} live={live} />
+      </section>
     </main>
   );
 }
