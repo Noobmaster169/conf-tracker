@@ -136,20 +136,35 @@ export default async function SessionPage({ params, searchParams }: PageProps<"/
         {tab === "transcript" &&
           (turns.length > 0 ? (
             <section aria-label="Transcript">
-              <ol className="space-y-5">
+              <ol className="space-y-8">
                 {turns.map((turn) => (
-                  <li key={turn.t0}>
-                    <p className="mb-1 flex items-baseline gap-3 text-[14px]">
-                      <span className="font-semibold">{turn.name ?? "Unnamed voice"}</span>
-                      {detail.video_id ? (
-                        <a href={watchUrl(detail.video_id, turn.t0)} target="_blank" rel="noreferrer" className="tabular-nums text-ink-faint hover:text-accent">
-                          {formatT(turn.t0)}
-                        </a>
-                      ) : (
-                        <span className="tabular-nums text-ink-faint">{formatT(turn.t0)}</span>
-                      )}
-                    </p>
-                    <p className="max-w-[72ch] leading-relaxed">{turn.text}</p>
+                  <li key={turn.paragraphs[0]!.t0} className="sm:grid sm:grid-cols-[180px_1fr] sm:gap-6">
+                    <div className="mb-2 sm:mb-0">
+                      <p className="flex items-center gap-2 font-semibold leading-tight">
+                        <span aria-hidden className="size-2 shrink-0 rounded-full bg-ink-faint" />
+                        {turn.name ?? "Unnamed voice"}
+                      </p>
+                      {turn.about && <p className="mt-0.5 pl-4 text-[13px] leading-tight text-ink-soft">{turn.about}</p>}
+                    </div>
+                    <div className="space-y-4">
+                      {turn.paragraphs.map((paragraph) => (
+                        <div key={paragraph.t0} className="grid grid-cols-[48px_1fr] gap-4">
+                          {detail.video_id ? (
+                            <a
+                              href={watchUrl(detail.video_id, paragraph.t0)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="pt-0.5 font-mono text-[13px] tabular-nums text-ink-faint hover:text-accent"
+                            >
+                              {formatT(paragraph.t0 - (detail.t0 ?? 0))}
+                            </a>
+                          ) : (
+                            <span className="pt-0.5 font-mono text-[13px] tabular-nums text-ink-faint">{formatT(paragraph.t0 - (detail.t0 ?? 0))}</span>
+                          )}
+                          <p className="leading-relaxed">{paragraph.text}</p>
+                        </div>
+                      ))}
+                    </div>
                   </li>
                 ))}
               </ol>

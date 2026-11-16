@@ -1,13 +1,25 @@
 import type { Person } from "@/lib/api/conference";
 import type { Segment, Speaker } from "@/lib/api/schemas";
+import { titleAndOrg } from "@/lib/format";
 import { speakerResolver } from "@/lib/session-state";
 
-/** One stretch of the transcript by one voice: its lines run together. `name` is null for a voice nobody has named. */
+/** A paragraph closes once it reaches this many characters, at the end of a line, so a long turn reads in pieces. */
+export const PARAGRAPH_CHARS = 240;
+
+export interface TranscriptParagraph {
+  t0: number;
+  text: string;
+}
+
+/**
+ * One stretch of the transcript by one voice, in paragraphs. `name` is null for a voice nobody has named; `about` is
+ * the matched person's title and company, when known.
+ */
 export interface TranscriptTurn {
   speakerId: string | null;
   name: string | null;
-  t0: number;
-  text: string;
+  about: string | null;
+  paragraphs: TranscriptParagraph[];
 }
 
 /** The voice that says most of a line's words, after merges; null when no word carries one. */
@@ -23,16 +35,16 @@ function voiceOf(segment: Segment, resolve: (id: string | null) => string | null
 }
 
 /**
- * A session's transcript as turns: consecutive lines of the same voice joined, in time order. A voice is named by the
- * person it was matched to, else by the name the Namer gave it.
+ * A session's transcript as turns: consecutive lines of the same voice together, in time order, in paragraphs. A voice
+ * is named by the person it was matched to, else by the name the Namer gave it.
  */
 export function transcriptTurns(segments: Segment[], speakers: Speaker[], people: Person[]): TranscriptTurn[] {
   const resolve = speakerResolver(speakers);
-  const personName = new Map(people.map((p) => [p.id, p.name]));
-  const nameOf = (id: string | null): string | null => {
+  const personById = new Map(people.map((p) => [p.id, p]));
+  const who = (id: string | null): Pick<TranscriptTurn, "name" | "about"> => {
     const speaker = id === null ? undefined : speakers.find((s) => s.speaker_id === id);
-    if (!speaker) return null;
-    return (speaker.person_id !== null ? personName.get(speaker.person_id) : undefined) ?? speaker.name;
+    const person = speaker?.person_id != null ? personById.get(speaker.person_id) : undefined;
+    return { name: person?.name ?? speaker?.name ?? null, about: person ? titleAndOrg(person) : null };
   };
   const turns: TranscriptTurn[] = [];
   for (const segment of [...segments].sort((a, b) => a.t0 - b.t0)) {
@@ -40,8 +52,13 @@ export function transcriptTurns(segments: Segment[], speakers: Speaker[], people
     if (!text) continue;
     const speakerId = voiceOf(segment, resolve);
     const last = turns.at(-1);
-    if (last && last.speakerId === speakerId) last.text = `${last.text} ${text}`;
-    else turns.push({ speakerId, name: nameOf(speakerId), t0: segment.t0, text });
+    if (!last || last.speakerId !== speakerId) {
+      turns.push({ speakerId, ...who(speakerId), paragraphs: [{ t0: segment.t0, text }] });
+      continue;
+    }
+    const paragraph = last.paragraphs.at(-1)!;
+    if (paragraph.text.length >= PARAGRAPH_CHARS) last.paragraphs.push({ t0: segment.t0, text });
+    else paragraph.text = `${paragraph.text} ${text}`;
   }
   return turns;
 }
